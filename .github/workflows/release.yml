@@ -146,7 +146,7 @@ jobs:
           retention-days: 90
   publish:
     needs: [guard, inventory]
-    if: always() && needs.guard.result == 'success' && (needs.inventory.result == 'success' || needs.guard.outputs.mode != 'build')
+    if: ${{ false }} # Trial only: exercise recovery before automatic publication
     runs-on: ubuntu-24.04
     permissions:
       contents: write

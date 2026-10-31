@@ -19,9 +19,13 @@ case "${1:?Expected arch or fedora}" in
         id builder >/dev/null 2>&1 || useradd --create-home builder
         cp /input/PKGBUILD /work/
         cp /input/insidious-*.tar.xz /work/
+        # The release URL may not exist yet. A missing cached archive must fail,
+        # never fall back to downloading a different source during qualification.
+        cp /etc/makepkg.conf /work/makepkg.conf
+        printf '\nDLAGENTS=(\x27https::/usr/bin/false\x27 \x27http::/usr/bin/false\x27)\n' >> /work/makepkg.conf
         chown -R builder:builder /work
         cd /work
-        runuser -u builder -- env SRCDEST=/work MAKEFLAGS=-j2 makepkg --noconfirm --cleanbuild --force
+        runuser -u builder -- env SRCDEST=/work MAKEFLAGS=-j2 makepkg --config /work/makepkg.conf --noconfirm --cleanbuild --force
         cp insidious-*.pkg.tar.zst /results/
         package=(/results/insidious-*.pkg.tar.zst)
         pacman -Q > /results/packages.txt

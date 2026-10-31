@@ -91,7 +91,7 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(checks.aggregate(documentation, False, True))
         self.assertFalse(checks.aggregate(documentation, False, False))
         for path in ['CMakeLists.txt',
-                     'resources/icon.svg', 'tools/release/github.py',
+                     'resources/icon.svg', 'tools/release/artifacts.py',
                      'packaging/platforms.json', '.github/workflows/release.yml']:
             self.assertTrue(checks.package_required([path]), path)
         for required in (False, True):

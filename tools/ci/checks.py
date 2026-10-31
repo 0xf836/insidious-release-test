@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 
 
 def conventional_title(title):
@@ -88,14 +87,8 @@ def changed_paths(root):
     return paths
 
 
-def package_policy(root):
-    paths = changed_paths(root)
-    return paths is None or package_required(paths)
-
-
 def docs_only(paths):
     return bool(paths) and all(path.endswith('.md') or path.startswith('docs/') for path in paths)
-
 
 
 def aggregate(results, packages_required=None, documentation_only=False):

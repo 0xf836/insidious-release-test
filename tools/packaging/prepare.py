@@ -52,8 +52,7 @@ def render_recipes(source, repository='0xf836/insidious'):
         raise ValueError('Invalid source repository')
     version, digest = inspect_source(source)
     recipes = {}
-    # Recovery may use newer workflow code. Recipe data must still come from
-    # the exact canonical release source, never the current control checkout.
+    # Keep recipes aligned with the source being packaged.
     with tarfile.open(source, 'r:xz') as archive:
         for template, name in [('arch/PKGBUILD.in', 'PKGBUILD'),
                                ('rpm/insidious.spec.in', 'insidious.spec')]:

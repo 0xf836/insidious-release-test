@@ -125,4 +125,4 @@ jobs:
             gh api --method DELETE "repos/$GH_REPO/releases/assets/$asset_id"
           done < asset-ids
           gh release upload "$RELEASE_TAG" release-bundle/*
-          gh release edit "$RELEASE_TAG" --draft=false --title "Insidious ${RELEASE_TAG#v}" --latest
+          gh release edit "$RELEASE_TAG" --tag "$RELEASE_TAG" --verify-tag --draft=false --title "Insidious ${RELEASE_TAG#v}" --latest

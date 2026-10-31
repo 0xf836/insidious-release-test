@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/0xf836/insidious-release-test/compare/v0.1.1...v0.1.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* **release:** validate the complete automatic publication path ([febfa2f](https://github.com/0xf836/insidious-release-test/commit/febfa2f1b2023f6db3827b987d7a4fb4ea511f6f))
+
 ## [0.1.1](https://github.com/0xf836/insidious-release-test/compare/v0.1.0...v0.1.1) (2026-10-31)
 
 

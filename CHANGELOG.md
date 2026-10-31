@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/0xf836/insidious-release-test/compare/v0.1.2...v0.1.3) (2026-10-31)
+
+
+### Bug Fixes
+
+* **release:** simplify native release publication ([05c1d54](https://github.com/0xf836/insidious-release-test/commit/05c1d549b39496f7909e92a8ff2670595d5246ac))
+
 ## [0.1.2](https://github.com/0xf836/insidious-release-test/compare/v0.1.1...v0.1.2) (2026-10-31)
 
 

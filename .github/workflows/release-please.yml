@@ -37,9 +37,5 @@ jobs:
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
-      actions: read
-      pull-requests: read
-      id-token: write
-      attestations: write
     with:
       tag: ${{ needs.release-please.outputs.tag }}

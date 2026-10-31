@@ -24,7 +24,7 @@ jobs:
     uses: ./.github/workflows/checks.yml
   builds:
     needs: validation
-    if: needs.validation.outputs.packages_required == 'false'
+    if: needs.validation.outputs.packages_required == 'false' && needs.validation.outputs.docs_only != 'true'
     uses: ./.github/workflows/build.yml
     with:
       matrix: ${{ needs.validation.outputs.matrix }}
@@ -53,9 +53,6 @@ jobs:
     uses: ./.github/workflows/packages.yml
     permissions:
       contents: read
-      actions: read
-      pull-requests: read
-      attestations: read
     with:
       matrix: ${{ needs.validation.outputs.matrix }}
       source-artifact: candidate-source
@@ -71,5 +68,6 @@ jobs:
       - name: Require every expected job
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          DOCS_ONLY: ${{ needs.validation.outputs.docs_only }}
           PACKAGES_REQUIRED: ${{ needs.validation.outputs.packages_required }}
         run: python3 tools/ci/checks.py aggregate

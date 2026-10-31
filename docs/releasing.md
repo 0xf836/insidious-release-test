@@ -1,6 +1,6 @@
 # Versioning, Releases, and Linux Distribution
 
-**Status: Dependency requirements, version identity, CI, desktop integration and automated Arch/Fedora native package qualification are implemented. Release automation is implemented; hosted qualification and production enablement are separate acceptance gates. The first production release remains pending.**
+**Status: Dependency requirements, version identity, CI, desktop integration, Arch/Fedora package qualification and release automation are implemented. The simplified publication workflow requires a fresh hosted trial before production enablement. Production repository setup and the first production release remain pending.**
 
 This is the canonical specification for version identity, release publication and Linux distribution. [Continuous integration](ci.md) documents the current build workflows. Implement the remaining delivery stages separately.
 
@@ -44,7 +44,7 @@ The shared CMake metadata module generates `build_version.h` for the executable;
 - Modified Git checkout: append `.dirty` to the development identity, including when HEAD has a release tag.
 - Export without Git or official archive metadata: use `0.2.0-dev+unknown`, never imply a verified release.
 
-Release builds require clean sources and explicit validation of version, tag, and commit. An official source archive includes generated source metadata with version and full commit SHA; that metadata must agree with `version.txt`. Do not embed local absolute paths, usernames, or build timestamps in the displayed version. Record build environment details in the release manifest instead.
+Release builds require clean sources and explicit validation of version, tag, and commit. An official source archive includes generated source metadata with version and full commit SHA; that metadata must agree with `version.txt`. Do not embed local absolute paths, usernames, or build timestamps in the displayed version. Keep build environment details in CI artifacts.
 
 Headless `--version`/`-v` behavior is preserved. `Help -> About Insidious` and the normal/fullscreen compact menus share one action. The localizable dialog displays the same version, MIT license and project link, with keyboard access to the link and version selection. Opening it performs no network request; clicking the link explicitly opens the browser. Qt organization/application names and the settings schema are unchanged.
 
@@ -60,7 +60,7 @@ cmake -DSOURCE_DIR=/path/to/clean/release-checkout \
   -P cmake/WriteSourceMetadata.cmake
 ```
 
-Run from the project root. The helper refuses dirty/untagged sources and existing output files; keep staging outside the source checkout. The release source tool generates the same metadata contract directly inside the canonical archive and verifies tag/SHA/source identity. This metadata is an identity record, not an authenticity proof or archive integrity check. Checksums and provenance belong to release publication.
+Run from the project root. The helper refuses dirty/untagged sources and existing output files; keep staging outside the source checkout. The release source tool generates the same metadata contract directly inside the canonical archive and verifies tag/SHA/source identity. This metadata is an identity record, not an authenticity proof or archive integrity check. Published downloads include SHA-256 checksums.
 
 Git is optional for building an unidentified source export, but is required for checkout identity and the isolated version tests. Those tests also use Bash (already required by the Arch recipe) to verify `pkgver()`. No new application runtime dependency is introduced.
 
@@ -93,114 +93,68 @@ Release-please maintains a release PR containing the version and changelog chang
 
 Use manifest-mode release-please with one root package, the `simple` release strategy, unprefixed component names, `v` tags, draft releases, and explicit tag creation for drafts. Validate the selected pinned version's draft and tag behavior before rollout. A draft must be bound to a real immutable tag so later runs can identify the release boundary.
 
-Use a GitHub App installation token for release-please so generated PR checks run automatically. Scope the App to this repository and the required contents, pull-request, and issue/label permissions. Store its private key as a GitHub Actions secret and its application ID as configuration. Package build jobs do not receive that key. Ordinary jobs default to `contents: read`; grant publication and attestation permissions only to the jobs that need them.
+Use a GitHub App installation token for release-please so generated PR checks run automatically. Scope the App to this repository and the required contents, pull-request, and issue/label permissions. Store its private key as a GitHub Actions secret and its application ID as configuration. Package build jobs do not receive that key. Ordinary jobs default to `contents: read`; grant release write permissions only to jobs that need them.
 
 Configure branch rules to require PRs and the aggregate CI check. Protect release tags against replacement/deletion, with only the release automation allowed to create them. Enable immutable releases before the first production publication. Record repository settings, App setup, and the exact required check names in the implementation runbook; do not assume these settings exist because workflow files have been merged.
 
 ### CI structure
 
-Use reusable workflows for validation and package builds, shared between PR checks and release publication. Pin third-party Actions to full commit SHAs and use dependency-update PRs to refresh them. Pin container bases by digest, record resolved distribution package versions, and update environments through review.
+Ordinary code changes run the existing build and test matrix. Documentation-only
+changes run validation without compiling the application. Changes to recipes,
+dependencies, install rules, desktop resources or CI tooling run the package
+matrix instead of build-only checks. A version/changelog-only release PR uses
+ordinary CI; publication owns the final tagged package build. PR titles remain
+advisory, and `CI required` is the stable required check.
 
-Required checks:
-
-- Ordinary code PRs: configure/build, CTest and version consistency. PR-title hints are advisory and do not block these checks or merging.
-- Changes affecting build files, dependencies, install rules, desktop resources, or packaging: full qualified package matrix.
-- Every release PR and release commit: full qualified package matrix regardless of path filters.
-- Existing offscreen and HiDPI tests retain their CTest environments.
-- A stable aggregate check fails if an expected job failed, was cancelled, or was unexpectedly skipped. Documentation-only PRs may pass explicit documentation checks without pretending a build ran.
-
-Do not expose release secrets to fork PRs or execute untrusted PR code in a privileged `pull_request_target` workflow. Build jobs upload artifacts; a separate trusted publication job verifies the expected inventory and publishes them.
-
-CMake now uses `include(CTest)`/`BUILD_TESTING` to make test targets and Qt Test requirements optional for consumers. CI keeps tests enabled. Developer memory-audit tooling requires `INSIDIOUS_BUILD_MEMORY_AUDIT=ON`, defaults to off, and is absent from installed packages.
-
-Current CI runs the complete candidate build matrix on every change, without path-based skips. See [Continuous integration](ci.md) for workflow responsibilities, permissions, artifacts and repository policy. Package builds and publication jobs belong to later stages.
-
-### Publication state machine
-
-1. Merge the approved release PR.
-2. Release-please creates the matching tag and draft Release for the exact release commit.
-3. Invoke the release build explicitly through dependent jobs/reusable workflows, passing tag and full SHA. Do not rely on another workflow starting from an event emitted by `GITHUB_TOKEN`.
-4. Verify tag, commit, version file, release-please manifest, and changelog agreement.
-5. Create the official source archive and source metadata. Transfer the archive and its SHA-256 digest through CI artifacts to package jobs. Build every package from that archive, without access to `.git`; seed the Arch source cache as described below rather than downloading an unpublished release asset.
-6. Test all required packages in clean target systems.
-7. Generate `release-manifest.json`, checksums, and build provenance attestations. Persist them with the payloads as CI artifacts before uploading the full artifact set to the draft.
-8. Verify the remote asset inventory and digests, then publish the draft automatically and mark it Latest.
-
-Use one serialized publication concurrency group without cancelling an in-progress publication on a new push. PR checks may cancel obsolete PR runs. A failed draft blocks another production publication until recovered or explicitly abandoned in the runbook.
+PR jobs have read-only credentials and no release secrets. Do not use
+`pull_request_target` to execute contributor code. Actions are pinned to full
+commit SHAs; container images are pinned by digest. Distribution repositories
+remain rolling, so those pins do not promise identical binaries across attempts.
+See [Continuous integration](ci.md) for selection and repository policy.
 
 ### Implemented automation
 
-`release-please.yml` runs on `master` pushes and manual dispatch. Both release
-workflows require repository variable `RELEASE_AUTOMATION_ENABLED=true` and the
-`master` ref. They stay inactive until the maintainer completes repository setup.
-The App token is created only in the release-please job, scoped to the current
-repository with contents, pull-request and issue write permissions. It is never
-passed to package containers or the publication workflow.
+`release-please.yml` maintains the release PR and calls `release.yml` after it
+creates the matching tag and draft. Both workflows require the `master` ref and
+repository variable `RELEASE_AUTOMATION_ENABLED=true`. The App private key is
+used only by release-please, never passed to package jobs.
 
-`release.yml` is called explicitly after release-please creates a draft. It also
-provides the recovery dispatch. Its guard resolves the existing tag,
-checks its ancestry on `master`, version/manifest agreement, the originating
-merged and labelled release-please PR, and the tagged platform matrix. GitHub
-requires push access to list drafts, so the guard has `contents: write` but uses
-a GET-only client, does not execute tagged application code and performs no
-release mutations. Source and package jobs have no release write token. A
-separate job creates attestations; the publication job performs asset uploads and
-publication. Third-party Actions are
-pinned to full SHAs, including versions using the supported Node.js runtime.
+The publication workflow has four jobs:
 
-`tools/release/artifacts.py` exports tracked Git contents from a clean checkout,
-rejects symlinks and existing source metadata, and normalizes archive ownership,
-timestamps and file ordering. The commit timestamp supplies `SOURCE_DATE_EPOCH`
-to the package build. The archive has no `.git` directory. For example:
+1. **Prepare:** resolve the existing tag, require ancestry on `master`, read the
+   existing Release and select the Arch/Fedora matrix. An already published
+   Release is a successful no-op.
+2. **Source:** check out the tag, require agreement with `version.txt` and the
+   release-please manifest, create one source archive and render its recipes.
+3. **Packages:** build/test each package once, then check it in a separate clean
+   runtime container. Both targets must succeed before publication.
+4. **Publish:** collect source, rendered recipes, binary packages, source RPM and
+   generated debug packages, write `SHA256SUMS`, replace the draft's files and
+   publish it. Only this job uploads or removes release assets.
+
+`tools/release/artifacts.py` only exports tracked source with version/full-SHA
+metadata and normalized archive ownership/timestamps. It adds no application
+runtime dependency. For example, from a clean tagged checkout:
 
 ```sh
 python3 tools/release/artifacts.py source --source . \
   --tag v0.1.0 --output .ci-results/release-source
 ```
 
-`--candidate` permits clean, untagged source snapshots solely for PR package
-checks. It cannot be combined with a release tag and does not pass the publication
-guard. Candidate archive metadata records the tested commit without proving an
-official release.
+`--candidate` exports an untagged clean snapshot for PR package checks. Recipes
+are rendered from the archive itself. Arch builds use the seeded source cache
+and checksum without falling back to the unpublished download URL.
 
-`packages.yml` reuses the native recipes and separate build/runtime containers.
-For each mandatory target, it retains `build.json`, clean-install `runtime.json`,
-packages and environment inventories. If a preceding published version exists,
-it verifies that release's complete signed inventory and additionally tests a
-real upgrade in another fresh container. Clean-install evidence remains required.
-The initial release records that no predecessor exists. Arch qualification disables
-source download agents: the seeded source archive and recipe checksum must pass
-without a fallback to the unpublished public URL.
+GitHub operations use `gh release view`, `gh release upload`, `gh release edit`
+and `gh api` for draft asset deletion. Job dependencies carry build success;
+there is no release inventory schema, provenance requirement, original-run
+lookup or custom recovery client. Package/build logs remain CI artifacts.
+Upgrade checks are available for packaging changes, not required on every release.
 
-The inventory job accepts only matching source, package, clean-runtime and,
-where applicable, upgrade evidence for both mandatory targets. It includes the
-canonical source, Arch recipe, Fedora spec, binary packages, source RPM and any
-generated Fedora debug packages. The manifest records the tag, full source SHA,
-release PR, predecessor, source epoch, pinned images, resolved package versions,
-and the producing workflow run/attempt/SHA. Duplicate, missing or unexpected
-payloads fail validation. `SHA256SUMS` covers every payload and the manifest;
-`provenance.jsonl` attests those same subjects without a checksum/signature cycle.
-The checksum file and provenance bundle are also mandatory uploaded assets.
-
-Before the first upload, the complete bundle is persisted as
-`release-bundle-vX.Y.Z-ATTEMPT` in Actions artifacts for 90 days. The draft body
-then receives a machine-readable inventory marker containing the producing run,
-attempt and manifest SHA-256. Keep this marker intact when editing release notes.
-Every existing remote asset is downloaded and compared to the trusted inventory;
-uploads fill only missing names and never use overwrite semantics. Publication
-requires the complete remote inventory. The final check verifies Latest and the
-public source URL consumed by the Arch recipe. A published rerun verifies files
-and provenance without changing the release.
-Every draft/publication metadata update explicitly restates the tag, full target
-SHA and release state; changing notes must not reset a draft to an untagged release.
-
-The publisher verifies provenance against this repository, the exact
-`.github/workflows/release.yml` signer, and its recorded workflow/source SHA,
-rejecting self-hosted runners. In recovery, that workflow SHA may be newer than
-the application source SHA; the signed manifest explicitly binds both identities.
-Attestation validation is performed with GitHub CLI, including the downloadable
-bundle. Python, GitHub CLI and the packaging/display tools are CI/developer
-requirements, not application runtime dependencies.
+Publication is serialized without cancellation. Artifact names are stable within
+a run, so **Re-run failed jobs** can use artifacts left by successful jobs.
+Retrying a build replaces its CI artifact. A fresh dispatch rebuilds the whole
+tag; it does not require retained artifacts from an earlier run.
 
 ## Dependency qualification and native support
 
@@ -232,7 +186,7 @@ Initial architecture: x86_64 (Debian/Ubuntu package architecture name: amd64).
 
 The audit records actual installed Ubuntu 26.04 package versions and distinguishes diagnostic tests from qualification. Recheck repository versions and distribution backports before reconsidering exclusions; do not present these candidates as supported installations based only on API availability or passing smoke tests.
 
-The machine-readable matrix is maintained in [packaging/platforms.json](../packaging/platforms.json); its [contract](../packaging/README.md) distinguishes selected candidates from qualified mandatory targets. Fedora 44 is the explicit Fedora candidate. Image digests remain null for untested environments. CI consumes the selected candidates, and the matrix records their pinned images and local clean-build results. Complete automated package qualification before promoting targets. Release inventory validation is implemented in the release tools. Publish the same matrix in release notes. Adding/removing a qualified platform requires a reviewed change; a failed release build cannot silently remove a mandatory platform.
+The machine-readable matrix is maintained in [packaging/platforms.json](../packaging/platforms.json); its [contract](../packaging/README.md) distinguishes selected candidates from qualified mandatory targets. Fedora 44 is the explicit Fedora candidate. Image digests remain null for untested environments. CI consumes the selected candidates, and the matrix records their pinned images and local clean-build results. Complete automated package qualification before promoting targets. The release workflow builds the selected Arch/Fedora matrix. Describe supported targets in release notes. Adding/removing a qualified platform requires a reviewed change; a failed release build cannot silently remove a mandatory platform.
 
 Debian and Ubuntu builds are separate even if they use the same recipe. Fedora support does not imply support for RHEL, Rocky Linux, AlmaLinux, or openSUSE. ARM64 is deferred.
 
@@ -272,31 +226,22 @@ Desktop integration must not add application-owned recent-item writes. A separat
 
 ## Release contents, integrity, and presentation
 
-Use the title `Insidious X.Y.Z`. Release notes contain a short highlights section, features/fixes, compatibility changes, known limitations, a platform/download table, installation and verification instructions, and a full changelog link. Edit the generated release PR notes for clarity before merge.
-
-Required published artifacts:
-
-- `insidious-X.Y.Z.tar.xz`: canonical source archive with version/source metadata, license, documentation, and recipe templates.
-- Binary packages for every qualified target, plus source packages/rendered recipes as described above.
-- `release-manifest.json`: version, tag, full source SHA, target identities, build environment/dependency versions, and each payload's filename, size, and SHA-256 digest.
-- `SHA256SUMS`: payload and release-manifest digests, excluding the checksum file itself.
-- Downloadable provenance bundles for the payloads and manifest, plus GitHub artifact attestations.
-
-Validate package and source filenames, not just the number of uploaded assets. Do not treat GitHub's automatically generated source downloads as the canonical package source; use the explicitly generated and checksummed asset.
-
-Set `SOURCE_DATE_EPOCH` from the release commit and normalize source archive ordering and timestamps. Record resolved dependencies and tools. These steps improve repeatability but are not a claim of bit-for-bit reproducible binaries until independently tested.
-
-Attestations establish build provenance; SHA-256 detects corruption but does not authenticate the publisher by itself. Provide verification instructions using `sha256sum` and `gh attestation verify` with this repository as the expected identity. Checksums and provenance do not substitute for future apt/RPM repository signing. Own package repositories and their signing-key lifecycle are deferred.
+Use the title `Insidious X.Y.Z` and review the generated changelog before merging
+the release PR. Describe highlights, compatibility changes and known limitations.
+Downloads contain the canonical `insidious-X.Y.Z.tar.xz`, Arch/Fedora binary
+packages, rendered Arch PKGBUILD and Fedora spec, source RPM, any generated debug
+packages, and `SHA256SUMS`. Validate downloads with `sha256sum -c SHA256SUMS`.
+Checksums detect corruption; they do not authenticate the publisher. Package
+repository signing and build provenance are outside the initial release process.
 
 ## Release runbook and recovery contract
 
 ### One-time setup
 
-1. Verify remote release history, default branch, repository visibility, and availability of attestations/immutable releases.
-2. Finish dependency qualification and commit the explicit platform matrix.
-3. Configure the GitHub App, scoped secrets, workflow permissions, branch/tag rules, and immutable releases.
-4. Validate bootstrap, draft/tag handling, PR checks, recovery, and publication in a test repository. Use a valid test version and change only the test repository's state.
-5. Enable production automation only after the complete trial passes. Record configuration ownership and credential rotation instructions.
+Inspect existing tags and Releases before bootstrap; never reuse a published
+version. Configure the App, branch/tag policy and immutable releases, then test
+an ordinary release and retry in an authorized disposable repository before
+production enablement.
 
 Create a dedicated GitHub App, disable its webhook, and grant only repository
 Contents, Pull requests and Issues read/write access. Install it for the intended
@@ -323,58 +268,31 @@ variable `RELEASE_AUTOMATION_ENABLED=true` and dispatch **Release automation** o
 in `CHANGELOG.md`. CI rejects the release PR until the override is removed. Later
 versions are computed normally, without a persistent override.
 
-Qualify this setup in an explicitly authorized public test repository first,
-including App-generated PR checks, canonical-source builds, publication,
-provenance, interrupted upload/recovery and published reruns. Use that repository
-as `--repository` when preparing its recipes so its public source URL is tested.
-Do not infer production settings or a completed trial from local tests or merged
-workflow files. Repository setup and first production publication are stage 6.
-
 ### Routine release
 
-1. Review the release PR's version, compatibility notes, changelog, and intended platform set.
-2. Verify the full required checks and automated package smoke-test results.
-3. Merge the release PR; monitor the explicit publication workflow through its final verification.
-4. Confirm the published tag resolves to the intended commit, all downloads are present, digests/attestations verify, and Latest points to the completed release.
+1. Review the generated version and changelog and wait for `CI required`.
+2. Merge the release PR. This is the publication decision.
+3. Monitor package builds and publication, then confirm downloads are present.
 
-A green ordinary development PR is not release evidence. A successful package build is not proof of successful publication.
+### Retry policy
 
-### Failure and retry
-
-- Build/test failure: keep the draft unpublished and retain logs/artifacts. Retry transient infrastructure failures against the same SHA; code fixes require a new version.
-- Interrupted upload: resume the draft after verifying its tag/SHA and the persisted `release-manifest.json`. Reuse existing assets only if their digests match. A same-name mismatch is a hard failure, never an automatic overwrite.
-- Publication failure after upload: verify the complete remote inventory and retry publication. If publication already succeeded, verify it and exit successfully without changing assets.
-- Incomplete/abandoned draft: explicitly record abandonment, retain any existing tag, and use a new version for changed sources. Never move a previously created release tag.
-- Fault discovered after publication: publish a corrective version. If necessary, point Latest back to the previous verified release while the fix is prepared. Record the problem in the corrective release/issue; do not replace immutable assets.
-
-Provide a trusted `workflow_dispatch` recovery entry point accepting an existing release tag. Always validate the tag's syntax, ancestry on the release branch, full SHA, version, originating release PR, release-please manifest, and draft/published state before acting. Distinguish the release-please manifest (version automation state in the tagged source) from `release-manifest.json` (artifact inventory generated after package validation). Recovery then follows these states:
-
-- **Draft before release manifest generation:** validate the platform matrix from the tagged commit and repeat the source/package build and all mandatory checks at that SHA. No `release-manifest.json` is required to restart this stage. Reuse retained source artifacts only after checking their source identity and recorded digest. Unexpected remote payload assets at this stage require investigation before proceeding.
-- **Draft after release manifest generation or partial upload:** retrieve the persisted `release-manifest.json` and payloads from the original trusted CI run, verify their source identity, target matrix, and digests, and compare every existing remote asset against that inventory. Resume only missing uploads and publication checks. If the trusted inventory or matching payloads cannot be recovered, stop for explicit abandonment/new-version handling rather than inventing an inventory from remote files or overwriting them.
-- **Published release:** verify the complete published inventory and provenance, then exit without changing assets. Missing or mismatched files are an error requiring a corrective release.
-
-The recovery entry point cannot create arbitrary releases from user-supplied refs or bypass qualification checks.
-
-Another draft blocks a new publication. After a maintainer explicitly decides to
-abandon it, add `<!-- insidious-release-abandoned -->` to that draft's body and
-retain its tag. This marker records abandonment; it does not permit replacing
-that version's sources or assets.
-
-Dispatch **Release publication and recovery** on `master`, or use:
+- **Unpublished:** use **Re-run failed jobs** while this run's artifacts remain
+  available, or dispatch `release.yml` on `master` with the same tag for a full
+  rebuild. After successful builds, publication rechecks that the Release is
+  still a draft, removes its previous files, uploads the complete fresh set and
+  publishes. A failed upload leaves an unpublished draft for another attempt.
+- **Published:** do nothing. Never replace its files or move its tag. Corrections
+  require a new version. Repeating an older release must not change Latest.
 
 ```sh
 gh workflow run release.yml --repo OWNER/REPOSITORY --ref master -f tag=v0.1.0
 ```
 
-If inventory generation completed but the draft has no marker yet, supply the
-original trusted run and attempt using `-f recovery-run=RUN_ID:ATTEMPT`. A marker,
-when present, must agree with that input. Recovery validates the producing run's
-repository, workflow, event, branch, ancestry, manifest identity and provenance;
-it does not accept ordinary CI or fork PR artifacts. Missing/expired artifacts
-stop a draft recovery rather than trigger a rebuild of already uploaded payloads.
-Before any inventory/assets exist, a dispatch can repeat the complete tagged
-build. After publication, verification uses the published files, so expired CI
-artifacts do not require changing immutable assets.
+Do not manually publish a draft while automation is uploading it. Partial drafts
+do not block other versions. There are no abandonment markers or original-run
+identifiers to maintain. A rebuild may produce different binary bytes because
+distribution repositories change; the fresh set runs the ordinary package checks
+again. Bitwise identity between unpublished attempts is not promised.
 
 ## Deferred distribution channels
 
@@ -392,17 +310,19 @@ Before implementing Flatpak, resolve file access, adjacent-folder navigation, ar
 | 2. Version identity (complete) | `version.txt`, generated metadata, About, VCS recipe adaptation | Local tests cover consistent versions, headless output, clean/dirty/unknown/archive cases and incremental refresh; release/archive publication remains future work |
 | 3. CI (complete) | Reusable build/test jobs and PR conventions | Arch/Fedora builds, failure/cancellation handling and required-check policy; see [CI](ci.md) |
 | 4. Packages and desktop (complete) | Native recipes, qualified Arch/Fedora targets, install rules, icon/desktop/AppStream | Automated regression and fresh-container installation/removal, settings/privacy and X11/Wayland startup checks pass; upgrade is not applicable until a preceding package exists |
-| 5. Release automation (implemented; qualification required) | Release-please and verified draft-to-public pipeline | Test-repository release, retry, conflict, and missing-artifact scenarios pass |
-| 6. First release | Maintainer-reviewed version and full published artifact set | Runbook completed; remote downloads and provenance independently verified |
+| 5. Release automation | Release-please and draft-to-public package workflow | Local checks pass; qualify simplified publication and retry in a hosted test repository |
+| 6. First release | Maintainer-reviewed version and full published artifact set | Runbook completed; downloads present and checksums valid |
 | 7. Flatpak | Separate specification and implementation | Runtime, permissions, navigation, and privacy qualified before publication |
 
-For package acceptance, test fresh installation, upgrade from the preceding package when available, and removal in clean environments. Check runtime library resolution, install paths, desktop validation, settings preservation, and absence of application-created history/cache/log files. Package-manager logs are distinct from application logs.
+For package acceptance, test fresh installation and removal in clean environments. Run upgrade checks when installation or migration behavior changes. Check runtime library resolution, install paths, desktop validation, settings preservation, and absence of application-created history/cache/log files. Package-manager logs are distinct from application logs.
 
 The existing automated regression suite covers supported formats, scaling presets, ICC/EXIF, rotated region rendering, and HiDPI. Package qualification and releases do not require a separate manual UI, menu/Open With, or interactive X11/Wayland acceptance pass. Document pre-existing bugs separately; do not claim packaging fixes archive or zoom bugs tracked elsewhere in the roadmap.
 
-Release tests must cover a missing mandatory target, tag/version mismatch, early build failure before `release-manifest.json` exists, duplicate asset with a different digest, interrupted upload with the release manifest retained only in CI artifacts, unavailable recovery artifacts, rerun after publication, source archive without Git, and fork PR isolation. Arch acceptance must include building from the seeded source cache while the public source URL is unavailable, rejecting a mismatched source digest, and checking the public source URL after publication. Publication is allowed only after all mandatory target results and release-manifest checks pass.
-
-The documentation stage itself is complete when this specification, ADRs, roadmap, documentation index, README, Arch guide, and agent guidance agree; local links resolve; and `git diff --check` passes. No application build or hosted release proof is implied by documentation validation.
+Source helper tests cover archive identity, tag/version agreement and clean
+sources. CI policy tests cover job selection and required-job results. Hosted
+acceptance covers both package builds, draft publication, retry after an upload
+failure and a no-op after publication. Keep individual run evidence in Actions
+artifacts rather than this specification.
 
 ## References
 
@@ -415,7 +335,6 @@ These are design references, not promises that an upstream service or distributi
 - [Release Please manifest configuration](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md)
 - [GitHub workflow triggering and token behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 - [GitHub release management and draft publication](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
-- [GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
 - [Ubuntu 24.04 Qt package listing](https://packages.ubuntu.com/search?keywords=qt6&suite=noble)
 - [Debian libvips package listing](https://packages.debian.org/search?keywords=libvips42)
 - [Fedora libvips package listing](https://packages.fedoraproject.org/pkgs/vips/vips/)

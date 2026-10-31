@@ -9,15 +9,8 @@ on:
         description: Prepared canonical archive and recipes from this run
         required: true
         type: string
-      previous-tag:
-        description: Published predecessor for the additional upgrade check
-        default: ''
-        type: string
 permissions:
   contents: read
-  actions: read
-  pull-requests: read
-  attestations: read
 jobs:
   package:
     name: Package ${{ matrix.target }}
@@ -39,8 +32,6 @@ jobs:
         env:
           CI_IMAGE: ${{ matrix.image }}
           CI_DISTRIBUTION: ${{ matrix.distribution }}
-          PREVIOUS_TAG: ${{ inputs.previous-tag }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p .ci-results/package/build .ci-results/package/runtime
           export SOURCE_DATE_EPOCH
@@ -59,37 +50,17 @@ jobs:
             -v "$GITHUB_WORKSPACE/.ci-results/prepared:/input:ro" \
             -v "$GITHUB_WORKSPACE/.ci-results/package/build:/results" \
             "$CI_IMAGE" bash /src/tools/packaging/check.sh "$CI_DISTRIBUTION"
-          runtime_mode=--clean-install
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            python3 tools/release/github.py previous --tag "$PREVIOUS_TAG" \
-              --directory .ci-results/previous
-          fi
           docker run --rm --platform linux/amd64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             -v "$GITHUB_WORKSPACE/.ci-results/package/build:/input:ro" \
             -v "$GITHUB_WORKSPACE/.ci-results/package/runtime:/results" \
-            "$CI_IMAGE" bash /src/tools/packaging/runtime.sh "$CI_DISTRIBUTION" "$runtime_mode"
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            mkdir -p .ci-results/package/upgrade
-            previous_version="${PREVIOUS_TAG#v}"
-            if [[ "$CI_DISTRIBUTION" == arch ]]; then
-              previous_package="insidious-$previous_version-1-x86_64.pkg.tar.zst"
-            else
-              previous_package="insidious-$previous_version-1.fc44.x86_64.rpm"
-            fi
-            docker run --rm --platform linux/amd64 \
-              -v "$GITHUB_WORKSPACE:/src:ro" \
-              -v "$GITHUB_WORKSPACE/.ci-results/previous:/previous:ro" \
-              -v "$GITHUB_WORKSPACE/.ci-results/package/build:/input:ro" \
-              -v "$GITHUB_WORKSPACE/.ci-results/package/upgrade:/results" \
-              "$CI_IMAGE" bash /src/tools/packaging/runtime.sh "$CI_DISTRIBUTION" \
-              "/previous/$previous_package"
-          fi
+            "$CI_IMAGE" bash /src/tools/packaging/runtime.sh "$CI_DISTRIBUTION" --clean-install
       - name: Retain packages and evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packages-${{ matrix.target }}
+          overwrite: true
           path: .ci-results/package/
           if-no-files-found: error
           retention-days: 90

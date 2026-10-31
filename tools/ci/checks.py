@@ -66,35 +66,43 @@ def check_version(root):
                 raise ValueError('Remove the bootstrap release-as override in the first release PR')
 
 
-def package_required(paths, release_pr=False):
-    return release_pr or any(
-        path in {'CMakeLists.txt', 'PKGBUILD', 'version.txt', '.release-please-manifest.json',
-                 'release-please-config.json'}
+def package_required(paths):
+    return any(
+        path in {'CMakeLists.txt', 'PKGBUILD'}
         or path.startswith(('cmake/', 'packaging/', 'resources/', '.github/workflows/',
                             'tools/ci/', 'tools/packaging/', 'tools/release/'))
         for path in paths)
 
 
-def package_policy(root):
+def changed_paths(root):
     event_path = os.environ.get('GITHUB_EVENT_PATH')
     event = json.loads(Path(event_path).read_text()) if event_path else {}
     pr = event.get('pull_request', {})
     base = pr.get('base', {}).get('sha') or event.get('before')
-    release_pr = pr.get('head', {}).get('ref', '').startswith('release-please--')
     if not base or base == '0' * 40:
-        return True
+        return None
     if not re.fullmatch('[0-9a-f]{40}', base):
         raise ValueError('Invalid CI base SHA')
     paths = subprocess.check_output(['git', '-C', str(root), 'diff', '--name-only',
                                      base, 'HEAD']).decode().splitlines()
-    return package_required(paths, release_pr)
+    return paths
 
 
-def aggregate(results, packages_required=None):
+def package_policy(root):
+    paths = changed_paths(root)
+    return paths is None or package_required(paths)
+
+
+def docs_only(paths):
+    return bool(paths) and all(path.endswith('.md') or path.startswith('docs/') for path in paths)
+
+
+
+def aggregate(results, packages_required=None, documentation_only=False):
     if packages_required is None:
         return set(results) == {'validation', 'builds'} and all(
             job.get('result') == 'success' for job in results.values())
-    expected = {'validation': 'success', 'builds': 'skipped' if packages_required else 'success',
+    expected = {'validation': 'success', 'builds': 'skipped' if packages_required or documentation_only else 'success',
                 'package-source': 'success' if packages_required else 'skipped',
                 'packages': 'success' if packages_required else 'skipped'}
     return set(results) == set(expected) and all(
@@ -108,7 +116,8 @@ def main():
     if args.command == 'aggregate':
         required = os.environ.get('PACKAGES_REQUIRED')
         if required not in ('true', 'false') or not aggregate(
-                json.loads(os.environ['NEEDS_JSON']), required == 'true'):
+                json.loads(os.environ['NEEDS_JSON']), required == 'true',
+                os.environ.get('DOCS_ONLY') == 'true'):
             raise SystemExit('Required CI job failed, was cancelled, skipped, or missing')
         return
     if args.command == 'title-hint':
@@ -122,15 +131,15 @@ def main():
     root = Path(__file__).resolve().parents[2]
     check_version(root)
     platforms = json.loads((root / 'packaging/platforms.json').read_text())
-    sys.path.insert(0, str(root / 'tools/release'))
-    from artifacts import release_targets
-    release_targets(platforms)
     matrix = json.dumps(build_matrix(platforms))
-    packages = str(package_policy(root)).lower()
+    paths = changed_paths(root)
+    packages = str(paths is None or package_required(paths)).lower()
+    documentation = str(docs_only(paths)).lower()
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write(f'matrix={matrix}\n')
             output.write(f'packages_required={packages}\n')
+            output.write(f'docs_only={documentation}\n')
     print(matrix)
 
 

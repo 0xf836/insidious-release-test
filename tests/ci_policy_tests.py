@@ -82,8 +82,15 @@ class PolicyTests(unittest.TestCase):
 
     def test_package_policy_and_conditional_aggregate(self):
         self.assertFalse(checks.package_required(['docs/user-guide.md', 'src/ui/image_view_widget.cpp']))
-        self.assertTrue(checks.package_required(['docs/user-guide.md'], release_pr=True))
-        for path in ['CMakeLists.txt', 'version.txt', '.release-please-manifest.json',
+        self.assertFalse(checks.package_required(['version.txt', '.release-please-manifest.json', 'CHANGELOG.md']))
+        self.assertTrue(checks.docs_only(['docs/user-guide.md', 'README.md']))
+        self.assertFalse(checks.docs_only(['docs/user-guide.md', 'src/app/main.cpp']))
+        documentation = {name: {'result': status} for name, status in {
+            'validation': 'success', 'builds': 'skipped',
+            'package-source': 'skipped', 'packages': 'skipped'}.items()}
+        self.assertTrue(checks.aggregate(documentation, False, True))
+        self.assertFalse(checks.aggregate(documentation, False, False))
+        for path in ['CMakeLists.txt',
                      'resources/icon.svg', 'tools/release/github.py',
                      'packaging/platforms.json', '.github/workflows/release.yml']:
             self.assertTrue(checks.package_required([path]), path)

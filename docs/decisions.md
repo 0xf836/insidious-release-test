@@ -162,19 +162,19 @@ Configured mouse-button shortcuts take priority over built-in gestures using the
 
 ## ADR-020: Release PRs control versioning and publication
 
-**Status:** Implemented; hosted qualification and production enablement are separate gates.
+**Status:** Implemented; hosted qualification of the simplified publication workflow remains pending.
 
 **Decision:** Use SemVer, Conventional Commit squash titles, and release-please with a single `version.txt` application version. PR titles are unrestricted; maintainers choose the release classification in the final squash commit message. A maintainer merges the tested release PR; GitHub Actions then builds from its exact tagged source, verifies all required packages, and publishes a complete immutable GitHub Release from a draft. Keep `master` and one ordinary release channel initially. The [release specification](releasing.md) owns configuration, validation, and recovery details.
 
-**Rationale:** A reviewable release PR keeps release timing under maintainer control while automating repetitive version and changelog work. Draft staging prevents users from seeing incomplete downloads. Immutable tags/assets and explicit retry validation preserve artifact identity.
-
-Version identity, release-please configuration, canonical archives, native package
-workflows, signed inventories and draft recovery are implemented. Bootstrap keeps
-one explicit history boundary and an initial-version override which must be
-removed in the first release PR. Publication uses a retained CI bundle, verifies
-existing remote bytes, and never overwrites an asset. A published rerun is read-only.
+**Rationale:** A reviewable release PR controls timing while automating version
+and changelog work. Standard GitHub Actions dependencies and `gh` commands are
+sufficient for publication. Before publication, a failed draft may be rebuilt
+and its files replaced in full. Published releases and tags remain immutable;
+corrections require a new version. Exact-byte recovery, custom manifests and
+mandatory provenance are unnecessary for this application's initial channel.
 The [release runbook](releasing.md#release-runbook-and-recovery-contract) owns
-repository setup and the test-repository acceptance gate.
+setup and retries. The simplified workflow requires a hosted trial before
+production enablement.
 
 ## ADR-021: Native distribution uses qualified system dependencies
 

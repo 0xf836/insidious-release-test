@@ -135,7 +135,7 @@ Python 3, native packaging tools, desktop-file-utils, AppStream, Xvfb and Weston
 are developer/validation tools, not application runtime dependencies.
 
 Native qualification uses automated package checks and X11/Wayland startup
-checks, plus upgrade from the preceding package when available. Viewer behavior
+checks. Run additional upgrade checks when installation or migration behavior changes. Viewer behavior
 is covered by the existing regression suite. Manual menu/Open With or interactive
 UI acceptance is not required for platform qualification or releases. Keep
 `native_qualified` false until the applicable automated package gates pass.

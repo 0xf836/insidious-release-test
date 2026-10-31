@@ -5,6 +5,9 @@ on:
       matrix:
         description: Validated candidate build matrix
         value: ${{ jobs.validation.outputs.matrix }}
+      docs_only:
+        description: Whether only documentation changed
+        value: ${{ jobs.validation.outputs.docs_only }}
       packages_required:
         description: Whether native package qualification replaces build-only checks
         value: ${{ jobs.validation.outputs.packages_required }}
@@ -16,6 +19,7 @@ jobs:
     outputs:
       matrix: ${{ steps.policy.outputs.matrix }}
       packages_required: ${{ steps.policy.outputs.packages_required }}
+      docs_only: ${{ steps.policy.outputs.docs_only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

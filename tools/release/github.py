@@ -14,13 +14,16 @@ MARKER = re.compile(r'<!-- insidious-release-inventory:([1-9][0-9]*):([1-9][0-9]
 
 
 class GitHub:
-    def __init__(self, repository):
+    def __init__(self, repository, read_only=False):
         if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
             raise ValueError('Invalid repository')
         self.repository = repository
         self.prefix = f'repos/{repository}/'
+        self.read_only = read_only
 
     def api(self, path, data=None):
+        if self.read_only and data is not None:
+            raise ValueError('This release client permits GET requests only')
         command = ['gh', 'api', self.prefix + path, '--method', 'GET' if data is None else 'PATCH']
         if data is not None:
             command.extend(['--input', '-'])
@@ -48,6 +51,8 @@ class GitHub:
                             '-H', 'Accept: application/octet-stream'], stdout=stream, check=True)
 
     def upload(self, tag, path):
+        if self.read_only:
+            raise ValueError('This release client cannot upload assets')
         # Never pass --clobber: even a same-name race must fail without replacing bytes.
         subprocess.run(['gh', 'release', 'upload', tag, str(path),
                         '--repo', self.repository], check=True)
@@ -332,7 +337,7 @@ def main():
     parser.add_argument('--directory', type=Path, default=Path('release-bundle'))
     args = parser.parse_args()
     try:
-        api = GitHub(args.repository)
+        api = GitHub(args.repository, read_only=args.command != 'publish')
         if args.command == 'guard':
             state = guard(api, args.checkout, args.tag, args.recovery_run)
             write_json(args.state, state)

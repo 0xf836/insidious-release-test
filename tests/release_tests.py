@@ -160,6 +160,15 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(item.mtime, self.state['identity']['source_date_epoch'])
                 self.assertNotIn('.git', Path(item.name).parts)
 
+    def test_read_only_client_rejects_mutations_before_network_access(self):
+        client = github.GitHub('example/viewer', read_only=True)
+        with patch.object(github.subprocess, 'check_output') as request:
+            with self.assertRaises(ValueError):
+                client.api('releases/1', {'draft': False})
+            with self.assertRaises(ValueError):
+                client.upload('v0.1.0', self.root / 'package.rpm')
+        request.assert_not_called()
+
     def test_source_rejects_wrong_tag_dirty_and_untracked_state(self):
         with self.assertRaises(ValueError):
             artifacts.source_archive(self.source, self.root / 'wrong', 'v0.2.0')

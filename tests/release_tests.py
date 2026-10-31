@@ -65,6 +65,8 @@ class FakeGitHub:
             return copy.deepcopy(self.current)
         if data is not None:
             self.patches.append(copy.deepcopy(data))
+            if 'tag_name' not in data:
+                self.current['tag_name'] = 'untagged-draft'
             self.current.update(data)
             return copy.deepcopy(self.current)
         raise AssertionError(path)
@@ -389,6 +391,11 @@ class ReleaseTests(unittest.TestCase):
             self.api.fail_upload = None
             github.publish(self.api, self.source, state, bundle)
             self.assertFalse(self.api.current['draft'])
+            for update in self.api.patches:
+                self.assertEqual(update['tag_name'], 'v0.1.0')
+                self.assertEqual(update['target_commitish'], self.commit)
+                self.assertIn('insidious-release-inventory:', update['body'])
+                self.assertEqual(update['name'], 'Insidious 0.1.0')
             self.assertEqual(len(self.api.uploads), len(set(self.api.uploads)))
             self.assertTrue(set(already_uploaded) <= set(self.api.uploads))
             patches, uploads = copy.deepcopy(self.api.patches), list(self.api.uploads)

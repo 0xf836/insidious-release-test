@@ -191,6 +191,8 @@ uploads fill only missing names and never use overwrite semantics. Publication
 requires the complete remote inventory. The final check verifies Latest and the
 public source URL consumed by the Arch recipe. A published rerun verifies files
 and provenance without changing the release.
+Every draft/publication metadata update explicitly restates the tag, full target
+SHA and release state; changing notes must not reset a draft to an untagged release.
 
 The publisher verifies provenance against this repository, the exact
 `.github/workflows/release.yml` signer, and its recorded workflow/source SHA,

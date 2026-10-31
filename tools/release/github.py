@@ -300,14 +300,23 @@ def publish(api, checkout, state, directory):
     if not marker:
         body = release_notes(release.get('body') or '', manifest)
         body += '\n<!-- insidious-release-inventory:' + ':'.join(expected_marker) + ' -->\n'
-        api.api(f'releases/{release["id"]}', {'body': body, 'name': 'Insidious ' + manifest['version']})
+        updated = api.api(f'releases/{release["id"]}', {
+            'body': body, 'name': 'Insidious ' + manifest['version'],
+            'tag_name': tag, 'target_commitish': manifest['commit'],
+            'draft': True, 'prerelease': False})
+        if updated['tag_name'] != tag or not updated['draft']:
+            raise ValueError('Draft metadata update changed its release identity')
     for name in sorted(missing):
         api.upload(tag, directory / name)
     release = api.release(tag)
     remote_inventory(api, release, directory, complete=True)
-    api.api(f'releases/{release["id"]}', {'draft': False, 'make_latest': 'true'})
+    api.api(f'releases/{release["id"]}', {
+        'draft': False, 'make_latest': 'true', 'tag_name': tag,
+        'target_commitish': manifest['commit'], 'prerelease': False,
+        'body': release.get('body') or '', 'name': 'Insidious ' + manifest['version']})
     published = api.release(tag)
-    if published['draft'] or published.get('immutable') is not True:
+    if (published['tag_name'] != tag or published['draft'] or published.get('immutable') is not True
+            or inventory_marker(published) != expected_marker):
         raise ValueError('Release was not published with immutability enabled')
     remote_inventory(api, published, directory, complete=True)
     if api.api('releases/latest')['tag_name'] != tag:

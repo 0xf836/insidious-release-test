@@ -60,7 +60,8 @@ The build creates the following targets (test targets require the default `BUILD
 - `tools/vips_vector_benchmark.py` reproduces the developer-only SIMD comparison in the [dependency audit](dependency-audit.md), recording raw timings and CPU/SIMD metadata; its committed evidence is under `docs/evidence/`.
 - `tests/main_window_async_tests.cpp` uses controlled Qt futures and a private test friend to test current/stale/cancelled loader completions. CMake reuses `UI_SOURCES` for this test target and the app.
 - `tests/fixtures/` contains original stored RAR4/RAR5 fixtures with a stdlib-only regeneration script; tests do not require RAR tooling or Python at runtime.
-- `.github/workflows/` and `tools/ci/` implement reusable CI validation and clean candidate builds; see [CI](ci.md).
+- `.github/workflows/` and `tools/ci/` implement reusable CI validation, clean candidate builds and native package qualification; see [CI](ci.md).
+- `tools/release/` creates canonical source archives, validates the complete release inventory and coordinates trusted GitHub publication/recovery. `release-please-config.json` defines version automation; the [release specification](releasing.md#implemented-automation) owns its interfaces and credentials.
 - `packaging/platforms.json` records native target qualification and exclusions; it does not authorize a release.
 - `tests/core_tests.cpp` covers natural sort, extension filtering, folder/archive/multi-source scanning, source-tree grouping, viewer navigation, settings read/write validation, cache eviction, supported-extension decode from files/ZIP/7z, all four resize presets in both directions, valid/invalid ICC, EXIF autorotation with rotated HiDPI regions, and broken file/archive errors. Additional RAR4/RAR5 tests cover original stored fixtures. DIB variants test row order and distinguish file-backed headerless decode from archive rejection.
 

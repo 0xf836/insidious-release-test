@@ -36,7 +36,7 @@ class FakeGitHub:
                    'head': {'ref': 'release-please--branches--master',
                             'repo': {'full_name': self.repository}},
                    'labels': [{'name': 'autorelease: tagged'}]}
-        self.run = {'id': 123, 'path': '.github/workflows/release-please.yml', 'event': 'push',
+        self.run = {'id': 123, 'run_attempt': 1, 'path': '.github/workflows/release-please.yml', 'event': 'push',
                     'head_branch': 'master', 'head_sha': commit,
                     'head_repository': {'full_name': self.repository}}
         self.files = {}
@@ -102,6 +102,7 @@ class ReleaseTests(unittest.TestCase):
         (self.source / 'packaging').mkdir()
         (self.source / 'packaging/platforms.json').write_text(json.dumps(self.matrix))
         (self.source / 'image.txt').write_text('fixture\n')
+        (self.source / 'CHANGELOG.md').write_text('# Changelog\n\n## 0.1.0\n\nInitial viewer.\n')
         self.command('add', '.')
         self.command('commit', '-qm', 'feat: initial viewer')
         self.commit = self.command('rev-parse', 'HEAD').strip()

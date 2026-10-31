@@ -162,13 +162,19 @@ Configured mouse-button shortcuts take priority over built-in gestures using the
 
 ## ADR-020: Release PRs control versioning and publication
 
-**Status:** Planned.
+**Status:** Implemented; hosted qualification and production enablement are separate gates.
 
 **Decision:** Use SemVer, Conventional Commit squash titles, and release-please with a single `version.txt` application version. PR titles are unrestricted; maintainers choose the release classification in the final squash commit message. A maintainer merges the tested release PR; GitHub Actions then builds from its exact tagged source, verifies all required packages, and publishes a complete immutable GitHub Release from a draft. Keep `master` and one ordinary release channel initially. The [release specification](releasing.md) owns configuration, validation, and recovery details.
 
 **Rationale:** A reviewable release PR keeps release timing under maintainer control while automating repetitive version and changelog work. Draft staging prevents users from seeing incomplete downloads. Immutable tags/assets and explicit retry validation preserve artifact identity.
 
-Version identity is implemented: `version.txt`, shared build metadata, headless CLI/About and VCS recipe extraction. Version/archive fixtures verify identity boundaries and incremental refresh. Release-please, changelog automation and publication remain planned.
+Version identity, release-please configuration, canonical archives, native package
+workflows, signed inventories and draft recovery are implemented. Bootstrap keeps
+one explicit history boundary and an initial-version override which must be
+removed in the first release PR. Publication uses a retained CI bundle, verifies
+existing remote bytes, and never overwrites an asset. A published rerun is read-only.
+The [release runbook](releasing.md#release-runbook-and-recovery-contract) owns
+repository setup and the test-repository acceptance gate.
 
 ## ADR-021: Native distribution uses qualified system dependencies
 

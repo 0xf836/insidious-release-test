@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 
 def conventional_title(title):
@@ -120,7 +121,11 @@ def main():
         return
     root = Path(__file__).resolve().parents[2]
     check_version(root)
-    matrix = json.dumps(build_matrix(json.loads((root / 'packaging/platforms.json').read_text())))
+    platforms = json.loads((root / 'packaging/platforms.json').read_text())
+    sys.path.insert(0, str(root / 'tools/release'))
+    from artifacts import release_targets
+    release_targets(platforms)
+    matrix = json.dumps(build_matrix(platforms))
     packages = str(package_policy(root)).lower()
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:

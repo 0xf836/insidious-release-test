@@ -21,7 +21,7 @@ The documentation is organized by audience and responsibility. Each topic has on
 - [Architecture](architecture.md) describes stable layer boundaries, source abstractions, threading, rendering, caching, and privacy design.
 - [Current implementation](implementation.md) maps those concepts to the current files, classes, build targets, and data flows.
 - [Architecture decisions](decisions.md) records important choices, their status, and their rationale.
-- [Versioning, releases, and Linux distribution](releasing.md) documents version identity, CI, the planned release workflow, dependency qualification, native packaging and implementation stages; publication remains future work.
+- [Versioning, releases, and Linux distribution](releasing.md) documents version identity, CI, release automation and recovery, dependency qualification, native packaging and the production release runbook.
 - [Continuous integration](ci.md) describes reusable validation/build workflows, required checks, artifacts, local execution and repository policy.
 - [Platform matrix](../packaging/README.md) explains the machine-readable target inventory, qualification and exclusions.
 - [Dependency compatibility audit](dependency-audit.md) records the current Qt/libvips minimum rationale, Ubuntu 26.04 experiments, and remaining native-platform qualification limits.

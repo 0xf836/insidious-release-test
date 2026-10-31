@@ -1,13 +1,17 @@
 # Continuous Integration
 
-CI validates pull requests and builds the Arch and Fedora targets from [packaging/platforms.json](../packaging/platforms.json). Automated native package qualification and release publication are separate stages in the [release specification](releasing.md).
+CI validates pull requests against the Arch and Fedora targets from
+[packaging/platforms.json](../packaging/platforms.json). Build-only checks and
+native package qualification share one required aggregate. The
+[release specification](releasing.md) owns publication, credentials and recovery.
 
 ## Workflows and policy
 
-- `ci.yml` runs on pull requests (including title edits), pushes to `master`, and manual dispatch. It has no path filters: both candidates build even for documentation changes and future release PRs/commits.
-- `checks.yml` exposes reusable validation and the selected matrix from `packaging/platforms.json`. It validates numeric version syntax, optional release-please manifest agreement and tag agreement when called in tag context.
+- `ci.yml` runs on pull requests (including title edits), pushes to `master`, and manual dispatch. Every run validates policy and selects either build-only checks or the full native package matrix; documentation-only changes retain build-only checks.
+- `checks.yml` runs CI policy, packaging and release-tool regressions. It validates numeric version syntax, release-please manifest agreement, tag agreement when called in tag context, mandatory release targets and pinned images. It exposes the matrix and package-check decision to its caller. Release-please PRs must remove the one-time bootstrap override before they pass.
 - `build.yml` accepts the validated matrix as a reusable-workflow input. Each job runs the pinned official x86_64 image with a read-only source mount, copies a Git-less source export into disposable storage, installs standard distribution packages, builds Debug with tests enabled and developer audit tooling disabled, and runs the full CTest suite. Existing offscreen and HiDPI test properties are preserved. The container export identifies as `-dev+unknown`; official source-archive metadata validation remains covered by the version tests.
-- `CI required` runs even after dependency failures. It accepts only successful validation and builds; failure, cancellation, missing results and unexpected skips fail the check. The matrix rejects duplicate/unknown targets, missing mandatory targets, empty candidate sets and unpinned images. The advisory title job is excluded from its dependencies and result checks.
+- `packages.yml` consumes a prepared source artifact and builds/tests each native package once through its recipe, followed by separate clean runtime containers. Release PRs and changes to CMake, version metadata, package recipes, desktop resources, CI/release tooling or workflows require this path. Manual dispatch and missing base history also request package checks. Candidate sources record the tested commit and cannot pass the release publication guard. Publication supplies an official tagged archive and requests a separate upgrade check when a preceding release exists.
+- `CI required` runs even after dependency failures. It requires successful validation and the selected build/package jobs, and accepts skips only for the explicitly unselected path. Failure, cancellation, missing results and unexpected skips fail the check. The matrix rejects duplicate/unknown targets, missing mandatory targets, empty candidate sets and unpinned images. The advisory title job is excluded from its dependencies and result checks.
 
 `Release note hint` is a separate advisory job for PRs. A title without a
 Conventional Commit prefix produces a notice for maintainers and succeeds;
@@ -16,11 +20,16 @@ PR text is read from the event JSON and is never interpolated into shell command
 or echoed into workflow annotations.
 
 Maintainers choose a Conventional Commit message when squash-merging, such as
-`fix(viewer): restore zoom after rotation`, to classify future release notes.
+`fix(viewer): restore zoom after rotation`, to classify release notes.
 Dependabot uses the `ci(deps)` prefix automatically. Release-please and version
-bump classification remain future work.
+bump classification follow the [release specification](releasing.md#version-policy).
 
-All workflows grant only `contents: read`, do not persist checkout credentials, do not inherit secrets and do not use `pull_request_target`. Jobs run on disposable GitHub-hosted runners without release credentials. Reassess permissions and credential isolation when adding release automation.
+PR validation and build jobs have read-only permissions, do not persist checkout
+credentials, do not inherit secrets and do not use `pull_request_target`. Package
+jobs may read Actions/release provenance for upgrade checks but receive no App key,
+OIDC issuance or release write token. Jobs run on disposable GitHub-hosted runners.
+Only trusted release-please, attestation and publication jobs receive their
+respective additional credentials; see [release automation](releasing.md#implemented-automation).
 
 Actions are pinned to full SHAs. Dependabot proposes monthly Action updates. Image updates are manual reviewed changes to `ci_image` and `image_digest` in the platform matrix. Container digests freeze the base image, **not** the rolling package repositories: each run upgrades from standard repositories and retains the resolved package inventory. Fedora disables weak dependencies and the optional Cisco OpenH264 repository (H.264 is outside the supported format allowlist); mandatory JPEG/PNG/WebP/BMP and archive support still runs through the regression suite. A digest is not a guarantee of bit-for-bit reproducibility.
 
@@ -32,6 +41,8 @@ Run policy checks locally:
 
 ```sh
 python3 -m unittest discover -s tests -p 'ci_policy_tests.py' -v
+python3 -m unittest discover -s tests -p 'packaging_tests.py' -v
+python3 -m unittest discover -s tests -p 'release_tests.py' -v
 python3 tools/ci/checks.py validate
 bash -n tools/ci/build.sh
 actionlint
@@ -63,9 +74,12 @@ Protect `master` with required pull requests and the exact `CI required` check f
 
 Build-only CI does not require a separate live fork PR test. Native package and release readiness remain governed by the [platform matrix](../packaging/README.md) and [release acceptance criteria](releasing.md#delivery-stages-and-acceptance).
 
-Package qualification is an explicit [two-container check](packaging.md#package-checks)
-for packaging changes and releases. It adds no jobs to ordinary PR CI. Native
-recipes run the regression suite during package builds; runtime checks consume
-those packages without another build or CTest pass.
+Package qualification uses the [two-container check](packaging.md#package-checks)
+for packaging changes and releases. It replaces build-only jobs for those changes;
+ordinary application/documentation PRs retain build-only checks. Native recipes
+run the regression suite during package builds; runtime checks consume those
+packages without another build or CTest pass. Package evidence is retained for
+90 days; ordinary build evidence remains at 14 days. The stable required check
+name remains `CI required`.
 
 GitHub semantics used here are described in [reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows) and [workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax).

@@ -83,13 +83,21 @@ def inventory_marker(release):
 
 def validate_run(api, checkout, run_id, attempt):
     run = api.api(f'actions/runs/{int(run_id)}/attempts/{int(attempt)}')
-    if (run['path'] not in ('.github/workflows/release.yml', '.github/workflows/release-please.yml')
+    if (run['id'] != int(run_id) or run['run_attempt'] != int(attempt)
+            or run['path'] not in ('.github/workflows/release.yml', '.github/workflows/release-please.yml')
             or run['event'] not in ('push', 'workflow_dispatch')
             or run['head_branch'] != 'master'
             or run['head_repository']['full_name'] != api.repository):
         raise ValueError('Recovery artifacts must originate from a trusted release workflow')
     ancestry(checkout, run['head_sha'], 'refs/remotes/origin/master')
     return run
+
+
+def require_no_other_draft(api, tag):
+    for release in api.pages('releases?per_page=100'):
+        if (release['tag_name'] != tag and release['draft']
+                and '<!-- insidious-release-abandoned -->' not in (release.get('body') or '')):
+            raise ValueError('Recover or explicitly abandon the preceding draft first')
 
 
 def guard(api, checkout, tag, recovery_run=''):
@@ -103,6 +111,9 @@ def guard(api, checkout, tag, recovery_run=''):
     if (read_at(checkout, commit, 'version.txt') != version + '\n'
             or json.loads(read_at(checkout, commit, '.release-please-manifest.json')) != {'.': version}):
         raise ValueError('Tag/version/release-please manifest mismatch')
+    if not re.search(r'^## (?:\[' + re.escape(version) + r'\]|' + re.escape(version)
+                     + r')(?=[ (\n]|$)', read_at(checkout, commit, 'CHANGELOG.md'), re.MULTILINE):
+        raise ValueError('Release version is missing from the changelog')
     config = json.loads(read_at(checkout, commit, 'release-please-config.json'))
     if 'release-as' in config or any('release-as' in p for p in config['packages'].values()):
         raise ValueError('Remove the one-time release-as override in the first release PR')
@@ -120,6 +131,8 @@ def guard(api, checkout, tag, recovery_run=''):
     release = api.release(tag)
     if release['tag_name'] != tag or release['prerelease']:
         raise ValueError('Unexpected release tag/channel')
+    if release['draft']:
+        require_no_other_draft(api, tag)
     versions = []
     for previous in api.pages('releases?per_page=100'):
         previous_tag = previous['tag_name']
@@ -266,6 +279,7 @@ def publish(api, checkout, state, directory):
         remote_inventory(api, release, directory, complete=True)
         verify_public_source(api, directory, manifest)
         return  # Published reruns are strictly read-only.
+    require_no_other_draft(api, tag)
     for other in api.pages('releases?per_page=100'):
         if (not other['draft'] and not other['prerelease'] and re.fullmatch('v' + VERSION, other['tag_name'])
                 and tuple(map(int, other['tag_name'][1:].split('.')))

@@ -292,6 +292,9 @@ class ReleaseTests(unittest.TestCase):
                 github.guard(self.api, self.source, 'v0.1.0')
             other['body'] += '\n<!-- insidious-release-abandoned -->'
             self.assertEqual(github.guard(self.api, self.source, 'v0.1.0')['mode'], 'build')
+            self.api.current['body'] += '\n<!-- insidious-release-abandoned -->'
+            with self.assertRaises(ValueError):
+                github.guard(self.api, self.source, 'v0.1.0')
 
     def test_malformed_and_duplicate_inventory_markers_fail(self):
         for body in ['<!-- insidious-release-inventory:bad -->',

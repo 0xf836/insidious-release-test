@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 
 
 def conventional_title(title):
@@ -55,12 +56,48 @@ def check_version(root):
     tag = os.environ.get('GITHUB_REF', '')
     if tag.startswith('refs/tags/') and tag != 'refs/tags/v' + version.strip():
         raise ValueError('Tag/version mismatch')
+    event_path = os.environ.get('GITHUB_EVENT_PATH')
+    if event_path and os.environ.get('GITHUB_EVENT_NAME') == 'pull_request':
+        event = json.loads(Path(event_path).read_text())
+        if event['pull_request'].get('head', {}).get('ref', '').startswith('release-please--'):
+            config = json.loads((root / 'release-please-config.json').read_text())
+            if 'release-as' in config or any('release-as' in p for p in config['packages'].values()):
+                raise ValueError('Remove the bootstrap release-as override in the first release PR')
 
 
-def aggregate(results):
-    return set(results) == {'validation', 'builds'} and all(
-        job.get('result') == 'success' for job in results.values()
-    )
+def package_required(paths, release_pr=False):
+    return release_pr or any(
+        path in {'CMakeLists.txt', 'PKGBUILD', 'version.txt', '.release-please-manifest.json',
+                 'release-please-config.json'}
+        or path.startswith(('cmake/', 'packaging/', 'resources/', '.github/workflows/',
+                            'tools/ci/', 'tools/packaging/', 'tools/release/'))
+        for path in paths)
+
+
+def package_policy(root):
+    event_path = os.environ.get('GITHUB_EVENT_PATH')
+    event = json.loads(Path(event_path).read_text()) if event_path else {}
+    pr = event.get('pull_request', {})
+    base = pr.get('base', {}).get('sha') or event.get('before')
+    release_pr = pr.get('head', {}).get('ref', '').startswith('release-please--')
+    if not base or base == '0' * 40:
+        return True
+    if not re.fullmatch('[0-9a-f]{40}', base):
+        raise ValueError('Invalid CI base SHA')
+    paths = subprocess.check_output(['git', '-C', str(root), 'diff', '--name-only',
+                                     base, 'HEAD']).decode().splitlines()
+    return package_required(paths, release_pr)
+
+
+def aggregate(results, packages_required=None):
+    if packages_required is None:
+        return set(results) == {'validation', 'builds'} and all(
+            job.get('result') == 'success' for job in results.values())
+    expected = {'validation': 'success', 'builds': 'skipped' if packages_required else 'success',
+                'package-source': 'success' if packages_required else 'skipped',
+                'packages': 'success' if packages_required else 'skipped'}
+    return set(results) == set(expected) and all(
+        results[name].get('result') == status for name, status in expected.items())
 
 
 def main():
@@ -68,7 +105,9 @@ def main():
     parser.add_argument('command', choices=['validate', 'aggregate', 'title-hint'])
     args = parser.parse_args()
     if args.command == 'aggregate':
-        if not aggregate(json.loads(os.environ['NEEDS_JSON'])):
+        required = os.environ.get('PACKAGES_REQUIRED')
+        if required not in ('true', 'false') or not aggregate(
+                json.loads(os.environ['NEEDS_JSON']), required == 'true'):
             raise SystemExit('Required CI job failed, was cancelled, skipped, or missing')
         return
     if args.command == 'title-hint':
@@ -82,9 +121,11 @@ def main():
     root = Path(__file__).resolve().parents[2]
     check_version(root)
     matrix = json.dumps(build_matrix(json.loads((root / 'packaging/platforms.json').read_text())))
+    packages = str(package_policy(root)).lower()
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write(f'matrix={matrix}\n')
+            output.write(f'packages_required={packages}\n')
     print(matrix)
 
 

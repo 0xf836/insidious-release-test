@@ -24,13 +24,45 @@ jobs:
     uses: ./.github/workflows/checks.yml
   builds:
     needs: validation
+    if: needs.validation.outputs.packages_required == 'false'
     uses: ./.github/workflows/build.yml
     with:
       matrix: ${{ needs.validation.outputs.matrix }}
+  package-source:
+    needs: validation
+    if: needs.validation.outputs.packages_required == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare candidate sources for package qualification only
+        run: |
+          python3 tools/release/artifacts.py source --source . --candidate --output .ci-results/source
+          archive=(.ci-results/source/insidious-*.tar.xz)
+          python3 tools/packaging/prepare.py --source "${archive[0]}" --output .ci-results/prepared
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-source
+          path: .ci-results/prepared/
+          if-no-files-found: error
+          retention-days: 14
+  packages:
+    needs: [validation, package-source]
+    uses: ./.github/workflows/packages.yml
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      attestations: read
+    with:
+      matrix: ${{ needs.validation.outputs.matrix }}
+      source-artifact: candidate-source
   required:
     name: CI required
     if: always()
-    needs: [validation, builds]
+    needs: [validation, builds, package-source, packages]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,4 +71,5 @@ jobs:
       - name: Require every expected job
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          PACKAGES_REQUIRED: ${{ needs.validation.outputs.packages_required }}
         run: python3 tools/ci/checks.py aggregate

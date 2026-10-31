@@ -3,7 +3,7 @@ Version:        @VERSION@
 Release:        1%{?dist}
 Summary:        Fast, privacy-conscious image viewer for Linux
 License:        MIT
-URL:            https://github.com/0xf836/insidious
+URL:            https://github.com/@REPOSITORY@
 Source0:        %{url}/releases/download/v%{version}/insidious-%{version}.tar.xz
 BuildRequires:  gcc-c++
 BuildRequires:  cmake

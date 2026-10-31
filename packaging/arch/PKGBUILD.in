@@ -4,7 +4,7 @@ pkgver=@VERSION@
 pkgrel=1
 pkgdesc='Fast, privacy-conscious image viewer for Linux'
 arch=('x86_64')
-url='https://github.com/0xf836/insidious'
+url='https://github.com/@REPOSITORY@'
 license=('MIT')
 options=('!debug')
 depends=('qt6-base>=6.6' 'libvips>=8.18.3' 'imagemagick' 'libarchive')

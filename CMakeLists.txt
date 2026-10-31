@@ -160,6 +160,9 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME insidious_packaging_tests
         COMMAND "${Python3_EXECUTABLE}" -m unittest discover
             -s "${CMAKE_SOURCE_DIR}/tests" -p packaging_tests.py -v)
+    add_test(NAME insidious_release_tests
+        COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+            -s "${CMAKE_SOURCE_DIR}/tests" -p release_tests.py -v)
 endif()
 
 add_executable(insidious_core_tests

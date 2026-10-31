@@ -1,0 +1,177 @@
+name: Release publication and recovery
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      recovery-run:
+        default: ''
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release-please tag (vMAJOR.MINOR.PATCH)
+        required: true
+        type: string
+      recovery-run:
+        description: Original RUN_ID:ATTEMPT, needed only if the draft has no inventory marker
+        default: ''
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
+jobs:
+  guard:
+    if: github.ref == 'refs/heads/master' && vars.RELEASE_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      mode: ${{ steps.guard.outputs.mode }}
+      sha: ${{ steps.guard.outputs.sha }}
+      matrix: ${{ steps.guard.outputs.matrix }}
+      previous_tag: ${{ steps.guard.outputs.previous_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RECOVERY_RUN: ${{ inputs.recovery-run }}
+        run: python3 tools/release/github.py guard
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-state-${{ github.run_attempt }}
+          path: |
+            release-state.json
+            release-identity.json
+            release-platforms.json
+          if-no-files-found: error
+          retention-days: 90
+  source:
+    needs: guard
+    if: needs.guard.outputs.mode == 'build'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.guard.outputs.sha }}
+          path: .ci-results/tagged-source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create canonical source and recipes
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python3 tools/release/artifacts.py source --source .ci-results/tagged-source \
+            --output .ci-results/source --tag "$RELEASE_TAG"
+          python3 tools/packaging/prepare.py --source ".ci-results/source/insidious-${RELEASE_TAG#v}.tar.xz" \
+            --output .ci-results/prepared --repository "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-source
+          path: .ci-results/prepared/
+          if-no-files-found: error
+          retention-days: 90
+  packages:
+    needs: [guard, source]
+    uses: ./.github/workflows/packages.yml
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      attestations: read
+    with:
+      matrix: ${{ needs.guard.outputs.matrix }}
+      source-artifact: release-source
+      previous-tag: ${{ needs.guard.outputs.previous_tag }}
+  inventory:
+    needs: [guard, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-state-${{ github.run_attempt }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-source
+          path: .ci-results/prepared
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: packages-*
+          path: .ci-results/packages
+      - name: Collect validated packages
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('.ci-results/packages')
+          for path in root.glob('packages-*'):
+              path.rename(root / path.name.removeprefix('packages-'))
+          PY
+          python3 tools/release/artifacts.py assemble --matrix release-platforms.json \
+            --identity release-identity.json --prepared .ci-results/prepared \
+            --results .ci-results/packages --directory release-bundle
+      - id: provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-checksums: release-bundle/SHA256SUMS
+      - name: Retain downloadable provenance
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" release-bundle/provenance.jsonl
+      - name: Persist the complete inventory before touching release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bundle-${{ inputs.tag }}-${{ github.run_attempt }}
+          path: release-bundle/
+          if-no-files-found: error
+          retention-days: 90
+  publish:
+    needs: [guard, inventory]
+    if: always() && needs.guard.result == 'success' && (needs.inventory.result == 'success' || needs.guard.outputs.mode != 'build')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-state-${{ github.run_attempt }}
+      - if: needs.guard.outputs.mode == 'build'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle-${{ inputs.tag }}-${{ github.run_attempt }}
+          path: release-bundle
+      - name: Recover or verify an existing release inventory
+        if: needs.guard.outputs.mode != 'build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/release/github.py restore
+      - name: Verify, upload only missing files and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/release/github.py publish

@@ -80,6 +80,28 @@ class PolicyTests(unittest.TestCase):
                 results[job]['result'] = status
                 self.assertFalse(checks.aggregate(results), (job, status))
 
+    def test_package_policy_and_conditional_aggregate(self):
+        self.assertFalse(checks.package_required(['docs/user-guide.md', 'src/ui/image_view_widget.cpp']))
+        self.assertTrue(checks.package_required(['docs/user-guide.md'], release_pr=True))
+        for path in ['CMakeLists.txt', 'version.txt', '.release-please-manifest.json',
+                     'resources/icon.svg', 'tools/release/github.py',
+                     'packaging/platforms.json', '.github/workflows/release.yml']:
+            self.assertTrue(checks.package_required([path]), path)
+        for required in (False, True):
+            expected = {'validation': {'result': 'success'},
+                        'builds': {'result': 'skipped' if required else 'success'},
+                        'package-source': {'result': 'success' if required else 'skipped'},
+                        'packages': {'result': 'success' if required else 'skipped'}}
+            self.assertTrue(checks.aggregate(expected, required))
+            for name in expected:
+                for status in ('failure', 'cancelled', 'skipped', 'success'):
+                    changed = copy.deepcopy(expected)
+                    changed[name]['result'] = status
+                    self.assertEqual(checks.aggregate(changed, required),
+                                     status == expected[name]['result'])
+            expected.pop('packages')
+            self.assertFalse(checks.aggregate(expected, required))
+
     def test_version(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'GITHUB_REF': 'refs/tags/v0.1.0'}):
             root = Path(directory)

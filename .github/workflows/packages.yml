@@ -1,0 +1,97 @@
+name: Reusable native package qualification
+on:
+  workflow_call:
+    inputs:
+      matrix:
+        required: true
+        type: string
+      source-artifact:
+        description: Prepared canonical archive and recipes from this run
+        required: true
+        type: string
+      previous-tag:
+        description: Published predecessor for the additional upgrade check
+        default: ''
+        type: string
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  attestations: read
+jobs:
+  package:
+    name: Package ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: .ci-results/prepared
+      - name: Build and qualify in separate containers
+        env:
+          CI_IMAGE: ${{ matrix.image }}
+          CI_DISTRIBUTION: ${{ matrix.distribution }}
+          PREVIOUS_TAG: ${{ inputs.previous-tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .ci-results/package/build .ci-results/package/runtime
+          export SOURCE_DATE_EPOCH
+          SOURCE_DATE_EPOCH=$(python3 - <<'PY'
+          import pathlib, tarfile
+          source, = pathlib.Path('.ci-results/prepared').glob('insidious-*.tar.xz')
+          with tarfile.open(source) as archive:
+              versions = [m for m in archive if m.name.endswith('/version.txt')]
+              version, = versions
+              print(int(version.mtime))
+          PY
+          )
+          docker run --rm --platform linux/amd64 \
+            --env SOURCE_DATE_EPOCH \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            -v "$GITHUB_WORKSPACE/.ci-results/prepared:/input:ro" \
+            -v "$GITHUB_WORKSPACE/.ci-results/package/build:/results" \
+            "$CI_IMAGE" bash /src/tools/packaging/check.sh "$CI_DISTRIBUTION"
+          runtime_mode=--clean-install
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            python3 tools/release/github.py previous --tag "$PREVIOUS_TAG" \
+              --directory .ci-results/previous
+          else
+            runtime_mode=--first-package
+          fi
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            -v "$GITHUB_WORKSPACE/.ci-results/package/build:/input:ro" \
+            -v "$GITHUB_WORKSPACE/.ci-results/package/runtime:/results" \
+            "$CI_IMAGE" bash /src/tools/packaging/runtime.sh "$CI_DISTRIBUTION" "$runtime_mode"
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            mkdir -p .ci-results/package/upgrade
+            previous_version="${PREVIOUS_TAG#v}"
+            if [[ "$CI_DISTRIBUTION" == arch ]]; then
+              previous_package="insidious-$previous_version-1-x86_64.pkg.tar.zst"
+            else
+              previous_package="insidious-$previous_version-1.fc44.x86_64.rpm"
+            fi
+            docker run --rm --platform linux/amd64 \
+              -v "$GITHUB_WORKSPACE:/src:ro" \
+              -v "$GITHUB_WORKSPACE/.ci-results/previous:/previous:ro" \
+              -v "$GITHUB_WORKSPACE/.ci-results/package/build:/input:ro" \
+              -v "$GITHUB_WORKSPACE/.ci-results/package/upgrade:/results" \
+              "$CI_IMAGE" bash /src/tools/packaging/runtime.sh "$CI_DISTRIBUTION" \
+              "/previous/$previous_package"
+          fi
+      - name: Retain packages and evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-${{ matrix.target }}
+          path: .ci-results/package/
+          if-no-files-found: error
+          retention-days: 90

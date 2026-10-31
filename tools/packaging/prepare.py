@@ -48,7 +48,9 @@ def inspect_source(source):
     return version, digest
 
 
-def prepare(source, output):
+def prepare(source, output, repository='0xf836/insidious'):
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
+        raise ValueError('Invalid source repository')
     version, digest = inspect_source(source)
     # Refuse to mix recipes with stale output or overwrite an existing archive.
     output.mkdir(parents=True, exist_ok=False)
@@ -56,6 +58,7 @@ def prepare(source, output):
                            ('rpm/insidious.spec.in', 'insidious.spec')]:
         content = (ROOT / 'packaging' / template).read_text()
         content = content.replace('@VERSION@', version).replace('@SHA256@', digest)
+        content = content.replace('@REPOSITORY@', repository)
         (output / name).write_text(content)
     shutil.copyfile(source, output / source.name)
     (output / 'SHA256SUMS').write_text(f'{digest}  {source.name}\n')
@@ -65,9 +68,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--repository', default='0xf836/insidious',
+                        help='Source release repository; override only for isolated release trials')
     args = parser.parse_args()
     try:
-        prepare(args.source, args.output)
+        prepare(args.source, args.output, args.repository)
     except (ValueError, OSError, tarfile.TarError) as error:
         parser.exit(1, f'{error}\n')
 

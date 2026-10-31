@@ -10,7 +10,7 @@ Provide a predictable maintainer workflow and complete, clearly labelled downloa
 
 The current baseline is:
 
-- `version.txt` declares version `0.1.0`; CMake reads it before `project()`. The dependency requirements are Qt >= 6.6 and vips-cpp >= 8.18.3. The [dependency audit](dependency-audit.md) records the implemented requirement correction and Ubuntu 26.04 experiments; release infrastructure remains planned.
+- `version.txt` declares version `0.1.0`; CMake reads it before `project()`. The dependency requirements are Qt >= 6.6 and vips-cpp >= 8.18.3. The [dependency audit](dependency-audit.md) records the implemented requirement correction and Ubuntu 26.04 experiments; first production publication remains pending.
 - `src/app/main.cpp` exposes generated build identity through `--version`, `-v` and Qt application metadata. About displays the same identity. The early version path does not initialize Qt or libvips and does not require a display.
 - The root `PKGBUILD` builds `insidious-git` from Git and installs through CMake.
 - Validation, package and release workflows are implemented. Inspect remote tags and GitHub Releases before bootstrapping a repository; workflow files alone do not configure repository policy or authorize a production release.
@@ -138,11 +138,14 @@ repository with contents, pull-request and issue write permissions. It is never
 passed to package containers or the publication workflow.
 
 `release.yml` is called explicitly after release-please creates a draft. It also
-provides the recovery dispatch. Its read-only guard resolves the existing tag,
+provides the recovery dispatch. Its guard resolves the existing tag,
 checks its ancestry on `master`, version/manifest agreement, the originating
-merged and labelled release-please PR, and the tagged platform matrix. Source and
-package jobs have no release write token. A separate job creates attestations;
-only the publication job can upload assets or publish. Third-party Actions are
+merged and labelled release-please PR, and the tagged platform matrix. GitHub
+requires push access to list drafts, so the guard has `contents: write` but uses
+a GET-only client, does not execute tagged application code and performs no
+release mutations. Source and package jobs have no release write token. A
+separate job creates attestations; the publication job performs asset uploads and
+publication. Third-party Actions are
 pinned to full SHAs, including versions using the supported Node.js runtime.
 
 `tools/release/artifacts.py` exports tracked Git contents from a clean checkout,
@@ -227,7 +230,7 @@ Initial architecture: x86_64 (Debian/Ubuntu package architecture name: amd64).
 
 The audit records actual installed Ubuntu 26.04 package versions and distinguishes diagnostic tests from qualification. Recheck repository versions and distribution backports before reconsidering exclusions; do not present these candidates as supported installations based only on API availability or passing smoke tests.
 
-The machine-readable matrix is maintained in [packaging/platforms.json](../packaging/platforms.json); its [contract](../packaging/README.md) distinguishes selected candidates from qualified mandatory targets. Fedora 44 is the explicit Fedora candidate. Image digests remain null for untested environments. CI consumes the selected candidates, and the matrix records their pinned images and local clean-build results. Complete automated package qualification before promoting targets. Release inventory validation remains later work. Publish the same matrix in release notes. Adding/removing a qualified platform requires a reviewed change; a failed release build cannot silently remove a mandatory platform.
+The machine-readable matrix is maintained in [packaging/platforms.json](../packaging/platforms.json); its [contract](../packaging/README.md) distinguishes selected candidates from qualified mandatory targets. Fedora 44 is the explicit Fedora candidate. Image digests remain null for untested environments. CI consumes the selected candidates, and the matrix records their pinned images and local clean-build results. Complete automated package qualification before promoting targets. Release inventory validation is implemented in the release tools. Publish the same matrix in release notes. Adding/removing a qualified platform requires a reviewed change; a failed release build cannot silently remove a mandatory platform.
 
 Debian and Ubuntu builds are separate even if they use the same recipe. Fedora support does not imply support for RHEL, Rocky Linux, AlmaLinux, or openSUSE. ARM64 is deferred.
 
@@ -314,7 +317,7 @@ explicit `bootstrap-sha` history boundary. The manifest agrees with `version.txt
 After verifying that the version is unused, enable the workflows with repository
 variable `RELEASE_AUTOMATION_ENABLED=true` and dispatch **Release automation** on
 `master`. In the generated first release PR, remove `release-as` and the obsolete
-`bootstrap-sha`, and curate the initial changelog entry around the product overview
+`bootstrap-sha`, and curate the initial changelog entry and PR release notes around the product overview
 in `CHANGELOG.md`. CI rejects the release PR until the override is removed. Later
 versions are computed normally, without a persistent override.
 

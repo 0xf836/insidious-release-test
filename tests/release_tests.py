@@ -101,6 +101,10 @@ class ReleaseTests(unittest.TestCase):
         (self.source / 'release-please-config.json').write_text('{"packages": {".": {"release-type": "simple"}}}\n')
         (self.source / 'packaging').mkdir()
         (self.source / 'packaging/platforms.json').write_text(json.dumps(self.matrix))
+        for template in ('arch/PKGBUILD.in', 'rpm/insidious.spec.in'):
+            target = self.source / 'packaging' / template
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text((ROOT / 'packaging' / template).read_text())
         (self.source / 'image.txt').write_text('fixture\n')
         (self.source / 'CHANGELOG.md').write_text('# Changelog\n\n## 0.1.0\n\nInitial viewer.\n')
         self.command('add', '.')
@@ -236,6 +240,15 @@ class ReleaseTests(unittest.TestCase):
                 (bundle / name).write_bytes(original)
                 (bundle / 'unexpected').unlink(missing_ok=True)
 
+    def test_self_consistent_checksums_cannot_hide_source_identity_mismatch(self):
+        bundle, manifest, _ = self.fixture_bundle()
+        manifest['commit'] = 'a' * 40
+        (bundle / 'release-manifest.json').write_text(json.dumps(manifest))
+        (bundle / 'SHA256SUMS').write_text(artifacts.checksums(bundle, manifest))
+        identity = dict(self.state['identity'], commit='a' * 40)
+        with self.assertRaises(ValueError):
+            artifacts.verify(bundle, self.matrix, identity)
+
     def test_missing_runtime_or_source_rpm_prevents_assembly(self):
         bundle, manifest, results = self.fixture_bundle()
         prepared = self.root / 'prepared'
@@ -327,6 +340,17 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 github.guard(self.api, self.source, 'v0.1.0')
             self.api.run = run
+
+    def test_changed_prepared_recipe_is_not_publishable(self):
+        _, manifest, results = self.fixture_bundle()
+        prepared = self.root / 'prepared'
+        (prepared / 'PKGBUILD').write_text((prepared / 'PKGBUILD').read_text() + '\n# Changed recipe\n')
+        identity = {key: value for key, value in manifest.items()
+                    if key not in ('schema_version', 'targets', 'payloads')}
+        output = self.root / 'bad-recipe'
+        with self.assertRaises(ValueError):
+            artifacts.assemble(prepared, results, self.matrix, identity, output)
+        self.assertFalse(output.exists())
 
     def test_recovery_requires_matching_run_and_available_artifacts(self):
         bundle, _, _ = self.fixture_bundle()

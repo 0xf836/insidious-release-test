@@ -32,6 +32,9 @@ not authenticity: source metadata alone cannot prove that an archive is official
 Source creation and publication use the [release automation](releasing.md#implemented-automation).
 `--repository OWNER/REPOSITORY` overrides the recipe's public source repository
 for an isolated release trial; production defaults to the project repository.
+Recipe templates are read from that archive, including during recovery with a
+newer tooling checkout; current-branch templates cannot change an older release's
+packaging inputs.
 
 ## Arch
 

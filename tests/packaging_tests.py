@@ -167,10 +167,14 @@ class PackagingTests(unittest.TestCase):
     def archive(self, directory, changes=None, extra=None):
         files = {'version.txt': '0.1.0\n',
                  'source-metadata.json': json.dumps({'version': '0.1.0', 'commit': 'a' * 40})}
+        for template in ('arch/PKGBUILD.in', 'rpm/insidious.spec.in'):
+            files['packaging/' + template] = (ROOT / 'packaging' / template).read_text()
         files.update(changes or {})
         source = directory / 'insidious-0.1.0.tar.xz'
         with tarfile.open(source, 'w:xz') as archive:
             for name, content in files.items():
+                if content is None:
+                    continue
                 member = tarfile.TarInfo(f'insidious-0.1.0/{name}')
                 data = content.encode()
                 member.size = len(data)
@@ -210,6 +214,23 @@ class PackagingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     prepare.prepare(source, output)
                 self.assertFalse(output.exists())
+
+    def test_recipes_come_from_the_archive_during_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            frozen = (ROOT / 'packaging/arch/PKGBUILD.in').read_text() + '\n# Frozen release template\n'
+            source = self.archive(directory, {'packaging/arch/PKGBUILD.in': frozen})
+            prepare.prepare(source, directory / 'recipes', 'example/viewer')
+            rendered = (directory / 'recipes/PKGBUILD').read_text()
+            self.assertIn('# Frozen release template', rendered)
+            self.assertIn('https://github.com/example/viewer', rendered)
+        for content in (None, '', 'x' * 65537):
+            with self.subTest(content_size=len(content or '')), tempfile.TemporaryDirectory() as directory:
+                directory = Path(directory)
+                source = self.archive(directory, {'packaging/arch/PKGBUILD.in': content})
+                with self.assertRaises(ValueError):
+                    prepare.prepare(source, directory / 'recipes')
+                self.assertFalse((directory / 'recipes').exists())
 
     def test_reject_unsafe_members(self):
         for name, kind in [('insidious-0.1.0/../escape', tarfile.REGTYPE),

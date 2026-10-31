@@ -8,7 +8,6 @@ import re
 import shutil
 import tarfile
 
-ROOT = Path(__file__).resolve().parents[2]
 VERSION = r'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
 
 
@@ -48,17 +47,33 @@ def inspect_source(source):
     return version, digest
 
 
-def prepare(source, output, repository='0xf836/insidious'):
+def render_recipes(source, repository='0xf836/insidious'):
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
         raise ValueError('Invalid source repository')
     version, digest = inspect_source(source)
+    recipes = {}
+    # Recovery may use newer workflow code. Recipe data must still come from
+    # the exact canonical release source, never the current control checkout.
+    with tarfile.open(source, 'r:xz') as archive:
+        for template, name in [('arch/PKGBUILD.in', 'PKGBUILD'),
+                               ('rpm/insidious.spec.in', 'insidious.spec')]:
+            try:
+                member = archive.getmember(f'insidious-{version}/packaging/{template}')
+            except KeyError as error:
+                raise ValueError('Source archive is missing a native recipe template') from error
+            if not member.isfile() or not 0 < member.size <= 65536:
+                raise ValueError('Invalid or oversized native recipe template')
+            content = archive.extractfile(member).read().decode('utf-8')
+            recipes[name] = (content.replace('@VERSION@', version).replace('@SHA256@', digest)
+                            .replace('@REPOSITORY@', repository))
+    return version, digest, recipes
+
+
+def prepare(source, output, repository='0xf836/insidious'):
+    version, digest, recipes = render_recipes(source, repository)
     # Refuse to mix recipes with stale output or overwrite an existing archive.
     output.mkdir(parents=True, exist_ok=False)
-    for template, name in [('arch/PKGBUILD.in', 'PKGBUILD'),
-                           ('rpm/insidious.spec.in', 'insidious.spec')]:
-        content = (ROOT / 'packaging' / template).read_text()
-        content = content.replace('@VERSION@', version).replace('@SHA256@', digest)
-        content = content.replace('@REPOSITORY@', repository)
+    for name, content in recipes.items():
         (output / name).write_text(content)
     shutil.copyfile(source, output / source.name)
     (output / 'SHA256SUMS').write_text(f'{digest}  {source.name}\n')

@@ -13,7 +13,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/packaging'))
-from prepare import VERSION, inspect_source
+from prepare import VERSION, inspect_source, render_recipes
 from evidence import digest, package_pattern, verify_build
 
 TARGETS = {'arch-x86_64': 'arch', 'fedora44-x86_64': 'fedora'}
@@ -142,6 +142,9 @@ def assemble(prepared, results, matrix, identity, output):
         metadata = json.load(archive.extractfile(f'insidious-{version}/source-metadata.json'))
     if source_version != version or metadata['commit'] != commit or tag != 'v' + version:
         raise ValueError('Source archive/release identity mismatch')
+    for name, content in render_recipes(source, identity['repository'])[2].items():
+        if (prepared / name).read_text() != content:
+            raise ValueError('Prepared recipes do not match the canonical source archive')
     targets = []
     packages = []
     for row in rows:
@@ -208,6 +211,16 @@ def verify(directory, matrix, identity):
     for item in manifest['payloads']:
         if descriptor(directory / item['filename']) != item:
             raise ValueError('Release payload digest/size mismatch')
+    source = directory / f'insidious-{manifest["version"]}.tar.xz'
+    version, _, recipes = render_recipes(source, identity['repository'])
+    with tarfile.open(source) as archive:
+        metadata = json.load(archive.extractfile(f'insidious-{version}/source-metadata.json'))
+    if version != manifest['version'] or metadata['commit'] != manifest['commit']:
+        raise ValueError('Canonical source metadata/release manifest mismatch')
+    for name, filename in [('PKGBUILD', f'insidious-{version}-arch-PKGBUILD'),
+                           ('insidious.spec', f'insidious-{version}-fedora44.spec')]:
+        if (directory / filename).read_text() != recipes[name]:
+            raise ValueError('Published recipes do not match the canonical source archive')
     for row in actual:
         if row['package'] != {key: value for key, value in descriptor(
                 directory / package_pattern(row['distribution'], manifest['version'])).items()

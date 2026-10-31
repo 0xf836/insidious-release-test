@@ -103,7 +103,8 @@ class PolicyTests(unittest.TestCase):
             self.assertFalse(checks.aggregate(expected, required))
 
     def test_version(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'GITHUB_REF': 'refs/tags/v0.1.0'}):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
+                'GITHUB_REF': 'refs/tags/v0.1.0', 'GITHUB_EVENT_NAME': '', 'GITHUB_EVENT_PATH': ''}):
             root = Path(directory)
             (root / 'version.txt').write_text('0.1.0\n')
             checks.check_version(root)
@@ -117,6 +118,22 @@ class PolicyTests(unittest.TestCase):
                 (root / 'version.txt').write_text(invalid)
                 with self.assertRaises(ValueError):
                     checks.check_version(root)
+
+    def test_release_pr_requires_removing_bootstrap_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'version.txt').write_text('0.1.0\n')
+            (root / '.release-please-manifest.json').write_text('{".": "0.1.0"}')
+            event = root / 'event.json'
+            event.write_text(json.dumps({'pull_request': {'head': {'ref': 'release-please--branches--master'}}}))
+            config = root / 'release-please-config.json'
+            config.write_text('{"packages": {".": {"release-as": "0.1.0"}}}')
+            with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request',
+                                         'GITHUB_EVENT_PATH': str(event), 'GITHUB_REF': 'refs/pull/1/merge'}):
+                with self.assertRaises(ValueError):
+                    checks.check_version(root)
+                config.write_text('{"packages": {".": {"release-type": "simple"}}}')
+                checks.check_version(root)
 
 
 if __name__ == '__main__':

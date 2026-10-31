@@ -132,6 +132,8 @@ def guard(api, checkout, tag, recovery_run=''):
     if release['tag_name'] != tag or release['prerelease']:
         raise ValueError('Unexpected release tag/channel')
     if release['draft']:
+        if '<!-- insidious-release-abandoned -->' in (release.get('body') or ''):
+            raise ValueError('This draft was explicitly abandoned; use a new version')
         require_no_other_draft(api, tag)
     versions = []
     for previous in api.pages('releases?per_page=100'):
@@ -281,6 +283,8 @@ def publish(api, checkout, state, directory):
         remote_inventory(api, release, directory, complete=True)
         verify_public_source(api, directory, manifest)
         return  # Published reruns are strictly read-only.
+    if '<!-- insidious-release-abandoned -->' in (release.get('body') or ''):
+        raise ValueError('Cannot publish an abandoned draft')
     require_no_other_draft(api, tag)
     for other in api.pages('releases?per_page=100'):
         if (not other['draft'] and not other['prerelease'] and re.fullmatch('v' + VERSION, other['tag_name'])

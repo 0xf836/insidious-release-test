@@ -276,6 +276,8 @@ def publish(api, checkout, state, directory):
     if marker and marker != expected_marker:
         raise ValueError('Release inventory was already bound to different bytes')
     if not release['draft']:
+        if release.get('immutable') is not True:
+            raise ValueError('Published release is not immutable')
         remote_inventory(api, release, directory, complete=True)
         verify_public_source(api, directory, manifest)
         return  # Published reruns are strictly read-only.
@@ -296,8 +298,8 @@ def publish(api, checkout, state, directory):
     remote_inventory(api, release, directory, complete=True)
     api.api(f'releases/{release["id"]}', {'draft': False, 'make_latest': 'true'})
     published = api.release(tag)
-    if published['draft']:
-        raise ValueError('Release remained a draft')
+    if published['draft'] or published.get('immutable') is not True:
+        raise ValueError('Release was not published with immutability enabled')
     remote_inventory(api, published, directory, complete=True)
     if api.api('releases/latest')['tag_name'] != tag:
         raise ValueError('Latest does not identify the completed release')

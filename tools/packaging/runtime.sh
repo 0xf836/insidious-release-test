@@ -47,7 +47,7 @@ if [[ "$previous" == --first-package || "$previous" == --clean-install ]]; then
 else
     [[ "$previous" == /previous/* && -f "$previous" ]]
     case "$distribution" in
-        arch) [[ "$(pacman -Qp --print-format '%n' "$previous")" == insidious ]] ;;
+        arch) [[ "$(pacman -Qpq "$previous")" == insidious ]] ;;
         fedora) [[ "$(rpm -qp --qf '%{NAME}' "$previous")" == insidious ]] ;;
     esac
     install_package "$previous"

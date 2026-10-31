@@ -29,7 +29,7 @@ class FakeGitHub:
 
     def __init__(self, commit):
         self.commit = commit
-        self.current = {'id': 1, 'tag_name': 'v0.1.0', 'draft': True, 'prerelease': False,
+        self.current = {'id': 1, 'tag_name': 'v0.1.0', 'draft': True, 'prerelease': False, 'immutable': True,
                         'body': 'Initial release'}
         self.pr = {'number': 5, 'merged_at': '2026-01-01T00:00:00Z', 'merge_commit_sha': commit,
                    'base': {'ref': 'master', 'repo': {'full_name': self.repository}},
@@ -270,6 +270,37 @@ class ReleaseTests(unittest.TestCase):
         self.api.files['unexpected.rpm'] = b'bytes'
         with self.assertRaises(ValueError):
             github.guard(self.api, self.source, 'v0.1.0')
+
+    def test_guard_checks_version_manifest_changelog_and_bootstrap_config(self):
+        original = github.read_at
+        invalid = {'version.txt': '0.2.0\n', '.release-please-manifest.json': '{".": "0.2.0"}',
+                   'CHANGELOG.md': '# Changelog\n\n## 0.0.1\n',
+                   'release-please-config.json': '{"packages": {".": {"release-as": "0.1.0"}}}'}
+        for filename, content in invalid.items():
+            def read(checkout, commit, path):
+                return content if path == filename else original(checkout, commit, path)
+            with self.subTest(filename=filename), patch.object(github, 'read_at', side_effect=read), self.assertRaises(ValueError):
+                github.guard(self.api, self.source, 'v0.1.0')
+
+    def test_another_draft_requires_explicit_abandonment(self):
+        original = self.api.pages
+        other = {'tag_name': 'v0.0.1', 'draft': True, 'prerelease': False, 'body': 'Unfinished'}
+        def pages(path):
+            return original(path) + [other] if path.startswith('releases?') else original(path)
+        with patch.object(self.api, 'pages', side_effect=pages):
+            with self.assertRaises(ValueError):
+                github.guard(self.api, self.source, 'v0.1.0')
+            other['body'] += '\n<!-- insidious-release-abandoned -->'
+            self.assertEqual(github.guard(self.api, self.source, 'v0.1.0')['mode'], 'build')
+            self.api.current['body'] += '\n<!-- insidious-release-abandoned -->'
+            with self.assertRaises(ValueError):
+                github.guard(self.api, self.source, 'v0.1.0')
+
+    def test_malformed_and_duplicate_inventory_markers_fail(self):
+        for body in ['<!-- insidious-release-inventory:bad -->',
+                     ('<!-- insidious-release-inventory:123:1:' + 'a' * 64 + ' -->\n') * 2]:
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                github.inventory_marker({'body': body})
 
     def test_marker_selects_retained_inventory_and_validates_origin(self):
         self.api.current['body'] += '\n<!-- insidious-release-inventory:123:1:' + 'a' * 64 + ' -->'

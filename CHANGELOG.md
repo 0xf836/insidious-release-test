@@ -1,9 +1,7 @@
 # Changelog
 
-Release PRs maintain versioned entries above the initial product overview below.
-The maintainer reviews release notes before merging each release PR.
+## 0.1.0
 
-## Initial product overview
 
 - Native Linux image viewing with lazy folder navigation, temporary file lists,
   and streaming ZIP, 7z and RAR access.

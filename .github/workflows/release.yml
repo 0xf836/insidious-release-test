@@ -28,7 +28,9 @@ jobs:
     if: github.ref == 'refs/heads/master' && vars.RELEASE_AUTOMATION_ENABLED == 'true'
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      # GitHub lists drafts only for callers with push access. The guard client
+      # permits GET requests only and never executes tagged application code.
+      contents: write
       actions: read
       pull-requests: read
     outputs:

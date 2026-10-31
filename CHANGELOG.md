@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0](https://github.com/0xf836/insidious-release-test/compare/v0.1.0...v0.1.0) (2026-10-31)
+
+
+### Build and Packaging
+
+* **release:** automate verified native releases ([becec7e](https://github.com/0xf836/insidious-release-test/commit/becec7e82589e338be6142bd75631c3defe4e1bd))
+
+## Changelog
+
 Release PRs maintain versioned entries above the initial product overview below.
 The maintainer reviews release notes before merging each release PR.
 

@@ -63,8 +63,6 @@ jobs:
           if [[ -n "$PREVIOUS_TAG" ]]; then
             python3 tools/release/github.py previous --tag "$PREVIOUS_TAG" \
               --directory .ci-results/previous
-          else
-            runtime_mode=--first-package
           fi
           docker run --rm --platform linux/amd64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/0xf836/insidious-release-test/compare/v0.1.0...v0.1.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **release:** exercise automatic publication and package upgrades ([b68e6c6](https://github.com/0xf836/insidious-release-test/commit/b68e6c66e5cb382d64e70fa288f7ca8defee683a))
+
 ## 0.1.0
 
 
